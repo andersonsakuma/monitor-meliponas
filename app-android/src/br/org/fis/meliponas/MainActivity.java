@@ -37,7 +37,7 @@ import java.io.OutputStream;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
-    private static final int REQ_CSV = 3, REQ_CAMERA = 1, REQ_GALERIA = 2, PERM_AUDIO = 10, PERM_ARMAZ = 11, PERM_BLE = 12;
+    private static final int REQ_PDF = 4, REQ_CSV = 3, REQ_CAMERA = 1, REQ_GALERIA = 2, PERM_AUDIO = 10, PERM_ARMAZ = 11, PERM_BLE = 12;
     private BeeMeter beemeter;
     private Runnable acaoBle;
     private String chaveBle;
@@ -71,6 +71,54 @@ public class MainActivity extends Activity {
         caixa.setBackgroundColor(Color.parseColor("#3B2414"));
         caixa.addView(web, new FrameLayout.LayoutParams(-1, -1));
         setContentView(caixa);
+    }
+
+    /* ---------- relatório em PDF: salvar ou enviar ---------- */
+    private byte[] pdfPendente;
+
+    private void entregarArquivo(String b64, String nome, String mime, String acao, String assunto) {
+        try {
+            byte[] dados = Base64.decode(b64, Base64.DEFAULT);
+            nome = new File(nome).getName();
+            if ("salvar".equals(acao)) {
+                pdfPendente = dados;
+                Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType(mime);
+                i.putExtra(Intent.EXTRA_TITLE, nome);
+                startActivityForResult(i, REQ_PDF);
+                return;
+            }
+            File pasta = new File(getCacheDir(), "relatorios");
+            if (!pasta.exists()) pasta.mkdirs();
+            File[] velhos = pasta.listFiles();
+            if (velhos != null) for (File v : velhos) if (System.currentTimeMillis() - v.lastModified() > 86400000L) v.delete();
+            File f = new File(pasta, nome);
+            FileOutputStream fo = new FileOutputStream(f);
+            fo.write(dados);
+            fo.close();
+            Uri uri = Uri.parse("content://" + Arquivos.AUTORIDADE + "/relatorios/" + Uri.encode(nome));
+            Intent i = new Intent(Intent.ACTION_SEND);
+            i.setType(mime);
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.putExtra(Intent.EXTRA_SUBJECT, assunto);
+            i.putExtra(Intent.EXTRA_TEXT, assunto + "\n\nRelatório gerado pelo aplicativo Monitor Meliponas.");
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            if ("whatsapp".equals(acao)) {
+                for (String pacote : new String[]{"com.whatsapp", "com.whatsapp.w4b"}) {
+                    try { i.setPackage(pacote); startActivity(i); return; } catch (Exception e) { }
+                }
+                i.setPackage(null);
+                js("window.toast && toast('WhatsApp não encontrado. Escolha outro aplicativo.')");
+            } else if ("email".equals(acao)) {
+                Intent sel = new Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:"));
+                i.setSelector(sel);
+                try { startActivity(i); return; } catch (Exception e) { i.setSelector(null); }
+            }
+            startActivity(Intent.createChooser(i, "Enviar relatório"));
+        } catch (Exception e) {
+            js("window.toast && toast('Não foi possível preparar o relatório')");
+        }
     }
 
     /* ---------- atualização do aplicativo ---------- */
@@ -197,6 +245,19 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_PDF) {
+            final byte[] dados = pdfPendente;
+            pdfPendente = null;
+            if (res == RESULT_OK && data != null && data.getData() != null && dados != null) {
+                try {
+                    OutputStream out = getContentResolver().openOutputStream(data.getData());
+                    out.write(dados);
+                    out.close();
+                    js("window.toast && toast('Relatório salvo')");
+                } catch (Exception e) { js("window.toast && toast('Não foi possível salvar o relatório')"); }
+            }
+            return;
+        }
         if (req == REQ_CSV) {
             if (res == RESULT_OK && data != null && data.getData() != null) {
                 final Uri destino = data.getData();
@@ -448,7 +509,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String versao() { return "3.3"; }
+        public String versao() { return "3.4"; }
 
         @JavascriptInterface
         public void bleBuscar(final String chave, final int segundos) {
@@ -502,6 +563,11 @@ public class MainActivity extends Activity {
                 i.putExtra(Intent.EXTRA_TITLE, "medicoes_meliponas_" + new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()) + ".csv");
                 try { startActivityForResult(i, REQ_CSV); } catch (Exception e) { js("window.toast && toast('Este celular não permite salvar arquivos')"); }
             }});
+        }
+
+        @JavascriptInterface
+        public void salvarArquivo(final String b64, final String nome, final String mime, final String acao, final String assunto) {
+            runOnUiThread(new Runnable() { public void run() { entregarArquivo(b64, nome, mime, acao, assunto); } });
         }
 
         @JavascriptInterface

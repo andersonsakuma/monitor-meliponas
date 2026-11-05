@@ -46,6 +46,7 @@ final class Ponte {
         case "bleParar": bee.parar()
         case "historico": return bee.historico(colonia: n(0), desde: Int64(s(1)) ?? 0)
         case "exportarHistorico": exportar()
+        case "salvarArquivo": entregarArquivo(b64: s(0), nome: s(1), assunto: s(4))
         case "bleCancelar": bee.cancelar()
         case "lotesPendentes": return bee.lotesPendentes()
         case "lerLote": return bee.lerLote(nome: s(0))
@@ -53,6 +54,22 @@ final class Ponte {
         default: break
         }
         return ""
+    }
+
+    /// Relatório em PDF: abre a folha do iPhone (Salvar em Arquivos, WhatsApp, Mail…).
+    private func entregarArquivo(b64: String, nome: String, assunto: String) {
+        guard let dados = Data(base64Encoded: b64, options: .ignoreUnknownCharacters) else { return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent((nome as NSString).lastPathComponent)
+        do { try dados.write(to: url) } catch { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let tela = self?.tela else { return }
+            let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+            if let pop = vc.popoverPresentationController {
+                pop.sourceView = tela.view
+                pop.sourceRect = CGRect(x: tela.view.bounds.midX, y: tela.view.bounds.maxY - 80, width: 1, height: 1)
+            }
+            tela.present(vc, animated: true)
+        }
     }
 
     private func exportar() {

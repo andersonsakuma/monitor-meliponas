@@ -400,13 +400,27 @@
       var c = navigator.connection;
       return c && c.type === 'cellular' ? 'movel' : 'wifi';
     },
-    versao: function () { return '3.2-web'; },
+    versao: function () { return '3.4-web'; },
     bleBuscar: function (c) { bleBuscar(c); },
     bleBaixar: function (c, i, d, col) { bleBaixar(c, i, d, col); },
     bleAoVivo: bleAoVivo,
     bleParar: bleParar,
     historico: historico,
     exportarHistorico: exportarHistorico,
+    salvarArquivo: function (b64, nome, mime, acao, assunto) {
+      var bin = atob(b64), u = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+      var blob = new Blob([u], { type: mime });
+      function baixar() { var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome; document.body.appendChild(a); a.click(); document.body.removeChild(a); }
+      if (acao === 'salvar') { baixar(); return; }
+      var arq = new File([blob], nome, { type: mime });
+      if (navigator.canShare && navigator.canShare({ files: [arq] })) {
+        navigator.share({ files: [arq], title: assunto, text: assunto }).catch(function () {});
+      } else {
+        baixar();
+        if (window.toast) toast('O PDF foi baixado. Anexe o arquivo no WhatsApp ou no e-mail.');
+      }
+    },
     bleIdentificar: bleIdentificar,
     bleCancelar: bleParar,
     lotesPendentes: function () { return JSON.stringify(lotes); },
