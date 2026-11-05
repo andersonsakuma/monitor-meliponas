@@ -1,5 +1,5 @@
 /* Funciona sem internet: guarda as telas e usa a cópia guardada quando a rede falha. */
-var CACHE = 'monitor-meliponas-v4';
+var CACHE = 'monitor-meliponas-v5';
 var ARQUIVOS = ['./', 'index.html', 'web-ponte.js', 'config.js', 'manifest.webmanifest', 'qr-web.png', 'qr-app.png',
   'logos/ipe-fis.png', 'logos/amazonia-bee.png', 'icone-192.png', 'icone-512.png'];
 self.addEventListener('install', function (e) {

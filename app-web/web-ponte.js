@@ -416,5 +416,8 @@
 
   window.addEventListener('online', function () { window.aoVoltarAoApp && window.aoVoltarAoApp(); });
   document.addEventListener('visibilitychange', function () { if (!document.hidden && window.aoVoltarAoApp) window.aoVoltarAoApp(); });
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function () {});
+  if ('serviceWorker' in navigator) {
+    // Com internet, as telas novas já chegam pela rede; aqui também se renova a cópia guardada para uso sem internet.
+    navigator.serviceWorker.register('sw.js').then(function (r) { if (navigator.onLine) r.update(); }).catch(function () {});
+  }
 })();

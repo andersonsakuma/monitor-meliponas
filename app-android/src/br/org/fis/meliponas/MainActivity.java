@@ -17,6 +17,7 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Looper;
 import android.provider.MediaStore;
 import android.util.Base64;
 import android.webkit.JavascriptInterface;
@@ -72,9 +73,77 @@ public class MainActivity extends Activity {
         setContentView(caixa);
     }
 
+    /* ---------- atualização do aplicativo ---------- */
+    private String urlAtualizacao;
+    private long idDownload = -1;
+
+    private boolean podeInstalar() {
+        if (Build.VERSION.SDK_INT < 26) return true;
+        try { return (Boolean) getPackageManager().getClass().getMethod("canRequestPackageInstalls").invoke(getPackageManager()); }
+        catch (Exception e) { return true; }
+    }
+
+    private void atualizar(String url) {
+        urlAtualizacao = url;
+        if (!podeInstalar()) {
+            js("window.atualizacaoEstado && atualizacaoEstado('permissao','Na tela que vai abrir, ligue Permitir desta fonte e volte para o aplicativo.')");
+            try { startActivity(new Intent("android.settings.MANAGE_UNKNOWN_APP_SOURCES", Uri.parse("package:" + getPackageName()))); }
+            catch (Exception e) { abrirNoNavegador(url); }
+            return;
+        }
+        try {
+            final android.app.DownloadManager dm = (android.app.DownloadManager) getSystemService(DOWNLOAD_SERVICE);
+            File destino = new File(getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS), "MonitorMeliponas.apk");
+            if (destino.exists()) destino.delete();
+            android.app.DownloadManager.Request req = new android.app.DownloadManager.Request(Uri.parse(url));
+            req.setTitle("Monitor Meliponas — atualização");
+            req.setMimeType("application/vnd.android.package-archive");
+            req.setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE);
+            req.setDestinationInExternalFilesDir(MainActivity.this, android.os.Environment.DIRECTORY_DOWNLOADS, "MonitorMeliponas.apk");
+            idDownload = dm.enqueue(req);
+            urlAtualizacao = null;
+            acompanharDownload(dm);
+        } catch (Exception e) {
+            abrirNoNavegador(url);
+        }
+    }
+
+    private void acompanharDownload(final android.app.DownloadManager dm) {
+        new android.os.Handler(Looper.getMainLooper()).postDelayed(new Runnable() { public void run() {
+            android.database.Cursor c = dm.query(new android.app.DownloadManager.Query().setFilterById(idDownload));
+            if (c == null || !c.moveToFirst()) { if (c != null) c.close(); return; }
+            int st = c.getInt(c.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS));
+            long feito = c.getLong(c.getColumnIndex(android.app.DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR));
+            long total = c.getLong(c.getColumnIndex(android.app.DownloadManager.COLUMN_TOTAL_SIZE_BYTES));
+            c.close();
+            if (st == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                js("window.atualizacaoEstado && atualizacaoEstado('instalar','Download concluído. Toque em Atualizar na tela do Android.')");
+                try {
+                    Intent i = new Intent(Intent.ACTION_VIEW);
+                    i.setDataAndType(dm.getUriForDownloadedFile(idDownload), "application/vnd.android.package-archive");
+                    i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                } catch (Exception e) {
+                    js("window.atualizacaoEstado && atualizacaoEstado('erro','Não foi possível abrir o instalador. Use o QR code de instalação.')");
+                }
+            } else if (st == android.app.DownloadManager.STATUS_FAILED) {
+                js("window.atualizacaoEstado && atualizacaoEstado('erro','O download falhou. Tente de novo com o Wi-Fi.')");
+            } else {
+                int pct = total > 0 ? (int) (feito * 100 / total) : 0;
+                js("window.atualizacaoEstado && atualizacaoEstado('baixando','Baixando a nova versão… " + pct + "%')");
+                acompanharDownload(dm);
+            }
+        }}, 1000);
+    }
+
+    private void abrirNoNavegador(String url) {
+        try { startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))); } catch (Exception e) { }
+    }
+
     @Override
     protected void onResume() {
         super.onResume();
+        if (urlAtualizacao != null && podeInstalar()) atualizar(urlAtualizacao);
         js("window.aoVoltarAoApp && window.aoVoltarAoApp()");
     }
 
@@ -379,7 +448,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String versao() { return "3.2"; }
+        public String versao() { return "3.3"; }
 
         @JavascriptInterface
         public void bleBuscar(final String chave, final int segundos) {
@@ -433,6 +502,11 @@ public class MainActivity extends Activity {
                 i.putExtra(Intent.EXTRA_TITLE, "medicoes_meliponas_" + new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()) + ".csv");
                 try { startActivityForResult(i, REQ_CSV); } catch (Exception e) { js("window.toast && toast('Este celular não permite salvar arquivos')"); }
             }});
+        }
+
+        @JavascriptInterface
+        public void instalarAtualizacao(final String url) {
+            runOnUiThread(new Runnable() { public void run() { atualizar(url); } });
         }
 
         @JavascriptInterface

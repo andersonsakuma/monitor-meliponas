@@ -212,7 +212,7 @@ header .id{flex:1;min-width:0}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Ajustes</button>
 </nav>
 <div id="toast"></div>
-<div id="modalAviso" onclick="if(event.target===this) fecharAviso()"><div class="caixa"><h3 style="margin:0 0 8px" id="mTitulo">Atenção</h3><div id="mCorpo"></div><button class="botao" onclick="fecharAviso()">Entendi</button></div></div>
+<div id="modalAviso" onclick="if(event.target===this) fecharAviso()"><div class="caixa"><h3 style="margin:0 0 8px" id="mTitulo">Atenção</h3><div id="mCorpo"></div><button class="botao" id="mOk" onclick="fecharAviso()">Entendi</button></div></div>
 
 <script>
 /* ---------- dados ---------- */
@@ -357,6 +357,7 @@ function terminarVisita(){
   v.fim=new Date().toISOString(); E.atual=null; salvar();
   telaVisita(); abrirResumo(v.id, true);
   sincronizar(false);
+  if(atualizacaoPendente) setTimeout(oferecerAtualizacao,4000);
 }
 
 /* ---------- formulário da colônia ---------- */
@@ -549,7 +550,7 @@ function testarServidor(){
    .then(function(ok){ alert(ok===true?'Conexão funcionando. O código do projeto está correto.':'O servidor respondeu, mas o código do projeto está errado.'); })
    .catch(function(e){ alert('Não foi possível conectar: '+e.message); });
 }
-window.aoVoltarAoApp=function(){ cabecalho(); if(rede()==='wifi') sincronizar(false); };
+window.aoVoltarAoApp=function(){ cabecalho(); if(rede()==='wifi'){ sincronizar(false); verificarAtualizacao(false); } };
 setInterval(function(){ if(!sincronizando && rede()==='wifi' && (contarPendencias().visitas||contarPendencias().midias)) sincronizar(false); }, 120000);
 
 /* ---------- aparelho de medição BeeMeter (Bluetooth) ---------- */
@@ -850,6 +851,7 @@ function resumoPeso(linhas){
   return {atual:b.p, varia:b.p-a.p, porDia:(b.p-a.p)/dias, pts:ps.map(function(l){return [l.h,l.p];})};
 }
 function mostrarAviso(titulo,lista){
+  $('mOk').style.display='';
   $('mTitulo').textContent=titulo;
   $('mCorpo').innerHTML=lista.map(function(a){ return '<div class="alerta '+a.nivel+'"><b>'+(a.col?'Colônia '+a.col+': ':'')+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; }).join('');
   $('modalAviso').classList.add('aberto');
@@ -913,6 +915,46 @@ function painelColonia(c,l){
   avisarNovas(al);
 }
 
+
+/* ---------- atualização do aplicativo ---------- */
+var REPO_VERSOES='https://api.github.com/repos/andersonsakuma/monitor-meliponas/releases/latest';
+var atualizacaoPendente=null, verificouNestaAbertura=false;
+function cmpVersao(a,b){ var x=String(a).split('.').map(Number), y=String(b).split('.').map(Number); for(var i=0;i<Math.max(x.length,y.length);i++){ var d=(x[i]||0)-(y[i]||0); if(d) return d; } return 0; }
+function versaoAtual(){ return temPonte('versao')?String(Android.versao()).replace('-web',''):'0'; }
+function verificarAtualizacao(manual){
+  if(!temPonte('instalarAtualizacao')){ if(manual) toast(window.MM_IOS?'No iPhone, as atualizações chegam pelo TestFlight':'Esta versão é atualizada sozinha ao abrir com internet'); return; }
+  if(!manual && (verificouNestaAbertura || rede()!=='wifi')) return;
+  verificouNestaAbertura=true;
+  if(manual) toast('Procurando atualização…');
+  fetch(REPO_VERSOES,{headers:{'Accept':'application/vnd.github+json'},cache:'no-store'}).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); }).then(function(rel){
+    var m=/app-v([\d.]+)/.exec(rel.tag_name||''), ap=(rel.assets||[]).filter(function(a){ return a.name==='MonitorMeliponas.apk'; })[0];
+    if(!m || !ap){ if(manual) toast('Nenhuma versão publicada encontrada'); return; }
+    if(cmpVersao(m[1],versaoAtual())<=0){ if(manual) toast('Você já tem a versão mais nova ('+versaoAtual()+')'); E.versaoVerificada=new Date().toISOString(); salvar(); return; }
+    atualizacaoPendente={versao:m[1], url:ap.browser_download_url, tamanho:ap.size};
+    if(E.atual && !manual){ toast('Nova versão '+m[1]+' disponível. Ela será oferecida ao terminar a visita.'); return; }
+    oferecerAtualizacao();
+  }).catch(function(e){ if(manual) toast('Não foi possível procurar atualização agora'); });
+}
+function oferecerAtualizacao(){
+  var a=atualizacaoPendente; if(!a) return;
+  $('mTitulo').textContent='Nova versão disponível';
+  $('mCorpo').innerHTML='<p>Versão <b>'+esc(a.versao)+'</b> do Monitor Meliponas (você tem a '+esc(versaoAtual())+'). Download de '+Math.max(1,Math.round(a.tamanho/1024))+' kB.</p>'+
+    '<div class="ok" style="margin:8px 0">As visitas, fotos, áudios e medições guardados no celular continuam guardados depois da atualização.</div>'+
+    '<p id="atuEstado" class="suave"></p><button class="botao verde" id="atuBotao" onclick="instalarAgora()">Atualizar agora</button><button class="botao claro" onclick="fecharAviso()">Depois</button>';
+  $('mOk').style.display='none';
+  $('modalAviso').classList.add('aberto');
+}
+function instalarAgora(){
+  if(!atualizacaoPendente) return;
+  if(E.atual){ toast('Termine a visita antes de atualizar'); return; }
+  var b=$('atuBotao'); if(b){ b.disabled=true; b.textContent='Preparando…'; }
+  sincronizar(false);
+  Android.instalarAtualizacao(atualizacaoPendente.url);
+}
+window.atualizacaoEstado=function(estado,txt){
+  var el=$('atuEstado'); if(el) el.textContent=txt; else toast(txt);
+  var b=$('atuBotao'); if(b){ if(estado==='erro'||estado==='permissao'){ b.disabled=false; b.textContent='Tentar de novo'; } else if(estado==='baixando'){ b.textContent='Baixando…'; } }
+};
 /* ---------- relatório ---------- */
 function linhaCol(n,r){
   if(!r || !completo(r)) return 'Col. '+n+': não registrada';
@@ -1088,7 +1130,8 @@ function telaAjustes(){
   if(window.MM_WEB) h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Aponte a câmera para o código e, no Safari, toque em Compartilhar &gt; Adicionar à Tela de Início.</p><img src="qr-web.png" alt="QR code da versão web" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">andersonsakuma.github.io/monitor-meliponas/app</p></div>';
   else if(window.MM_IOS) h+='<div class="cartao"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">No iPhone, a instalação é pelo aplicativo TestFlight, com o convite enviado pela equipe técnica. Em celulares Android, use o QR code da folha de instalação.</p></div>';
   else h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Peça para a outra pessoa apontar a câmera do celular para este código.</p><img src="qr-app.png" alt="QR code do aplicativo" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">github.com/andersonsakuma/monitor-meliponas/releases/latest</p></div>';
-  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.2 · FIS | IPÊ · Amazônia Bee</p>';
+  h+='<div class="cartao"><h3 style="margin-top:0">Versão do aplicativo</h3><p>Versão instalada: <b>'+esc(versaoAtual())+'</b>'+(E.versaoVerificada?'<br><span class="suave">Última verificação: '+dataBR(E.versaoVerificada)+' '+horaBR(E.versaoVerificada)+'</span>':'')+'</p><p class="suave">Ao abrir o aplicativo no Wi-Fi, ele procura sozinho a versão mais nova.</p><button class="botao claro" onclick="verificarAtualizacao(true)">Procurar atualização agora</button></div>';
+  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas '+esc(versaoAtual())+' · FIS | IPÊ · Amazônia Bee</p>';
   $('aba-ajustes').innerHTML=h;
 }
 function sel(n,campo,rot,ops){
@@ -1122,6 +1165,7 @@ cabecalho();
 if(!E.monitor) $('boasVindas').classList.add('aberta');
 irAba('visita');
 setTimeout(function(){ sincronizar(false); }, 1500);
+setTimeout(function(){ verificarAtualizacao(false); }, 2500);
 </script>
 </body>
 </html>
