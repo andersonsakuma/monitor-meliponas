@@ -207,6 +207,46 @@ struct Medidas {
   bool hx_ok;
 };
 
+/* Registro em memoria (secao 11b). Fica aqui no topo porque a IDE gera os
+ * prototipos das funcoes antes da primeira funcao, e reg_ler/reg_montar usam
+ * estes tipos. */
+/* Bits de 'validos' */
+#define V_DHT  0x01
+#define V_LUX  0x02
+#define V_TC1  0x04
+#define V_TC2  0x08
+#define V_TC3  0x10
+#define V_PESO 0x20
+
+struct __attribute__((packed)) RegistroCab {
+  uint32_t magico;
+  uint16_t versao;
+  uint16_t tamanho;       /* sizeof(Registro) */
+  uint32_t capacidade;
+  uint32_t inicio;        /* posicao do registro mais antigo */
+  uint32_t quantidade;
+  uint32_t proximo_seq;
+  uint32_t intervalo_s;
+  uint32_t reservado;
+};
+
+struct __attribute__((packed)) Registro {
+  uint32_t seq;
+  uint32_t epoca;         /* hora real (s desde 1970, UTC); 0 = relogio nao acertado */
+  uint32_t uptime_s;      /* segundos desde a partida */
+  uint16_t boot;          /* numero da partida */
+  int16_t  t_amb_x10;     /* temperatura ambiente x 10 */
+  uint16_t ur_x10;        /* umidade do ambiente x 10 */
+  uint16_t lux;           /* iluminacao (limitada a 65535) */
+  int16_t  tc_x4[3];      /* termopares x 4: fundo, divisao, melgueira */
+  int32_t  peso_g;        /* peso da colmeia em gramas */
+  uint8_t  validos;       /* bits V_* */
+  uint8_t  dht_tipo;      /* 11 ou 22 */
+};
+
+static_assert(sizeof(RegistroCab) == 32, "cabecalho deve ter 32 bytes");
+static_assert(sizeof(Registro) == 32, "registro deve ter 32 bytes");
+
 enum Painel : uint8_t { PN_LOGOS, PN_AMBIENTE, PN_LUZ, PN_TERMOPARES, PN_PESO };
 
 /* Uma cena desenha a tela inteira no quadro; oy desloca na vertical quando o
@@ -1080,42 +1120,6 @@ static uint32_t tarefa_hx711(uint32_t) {
 #define REGISTRO_MAGICO  0x31524D42UL  /* "BMR1" */
 #define REGISTRO_VERSAO  1
 
-/* Bits de 'validos' */
-#define V_DHT  0x01
-#define V_LUX  0x02
-#define V_TC1  0x04
-#define V_TC2  0x08
-#define V_TC3  0x10
-#define V_PESO 0x20
-
-struct __attribute__((packed)) RegistroCab {
-  uint32_t magico;
-  uint16_t versao;
-  uint16_t tamanho;       /* sizeof(Registro) */
-  uint32_t capacidade;
-  uint32_t inicio;        /* posicao do registro mais antigo */
-  uint32_t quantidade;
-  uint32_t proximo_seq;
-  uint32_t intervalo_s;
-  uint32_t reservado;
-};
-
-struct __attribute__((packed)) Registro {
-  uint32_t seq;
-  uint32_t epoca;         /* hora real (s desde 1970, UTC); 0 = relogio nao acertado */
-  uint32_t uptime_s;      /* segundos desde a partida */
-  uint16_t boot;          /* numero da partida */
-  int16_t  t_amb_x10;     /* temperatura ambiente x 10 */
-  uint16_t ur_x10;        /* umidade do ambiente x 10 */
-  uint16_t lux;           /* iluminacao (limitada a 65535) */
-  int16_t  tc_x4[3];      /* termopares x 4: fundo, divisao, melgueira */
-  int32_t  peso_g;        /* peso da colmeia em gramas */
-  uint8_t  validos;       /* bits V_* */
-  uint8_t  dht_tipo;      /* 11 ou 22 */
-};
-
-static_assert(sizeof(RegistroCab) == 32, "cabecalho deve ter 32 bytes");
-static_assert(sizeof(Registro) == 32, "registro deve ter 32 bytes");
 
 static RegistroCab reg_cab;
 static bool reg_ok = false;
