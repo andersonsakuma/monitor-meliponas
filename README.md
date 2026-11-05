@@ -15,6 +15,12 @@ Os monitores registram no celular as visitas semanais às 12 colônias, com foto
 | Logotipos | `logos/` | `ipe-fis.png` e `amazonia-bee.png`, usados no aplicativo e no painel. |
 | Automação | `.github/workflows/` | Compila o APK e publica o painel a cada atualização. |
 
+## Manual
+
+- Manual do monitor: `docs/Manual_Monitor_Meliponas.docx` e `.pdf`, publicado em `andersonsakuma.github.io/monitor-meliponas/manual.pdf`.
+- QR code do manual em PDF (cartaz e etiquetas) e em STL para impressora 3D: `docs/qr-manual/`.
+- Dúvidas: Anderson Sakuma (IPÊ/FIS) · (41) 99193-2677 · anderson.sakuma.tecpar@gmail.com
+
 ## Aparelhos de medição (BeeMeter)
 
 Cada colônia tem um aparelho BeeMeter que mede temperatura e umidade do ambiente, luz, três temperaturas dentro da caixa (fundo, divisão e melgueira) e o peso da colmeia, e guarda um registro a cada 10 minutos por até 31 dias. Na visita, o monitor abre a colônia no aplicativo e toca em **Baixar dados do aparelho**: o celular conecta por Bluetooth, acerta o relógio do aparelho, mostra as medidas do momento e baixa só os registros novos. As medições vão para a tabela `medicoes` e aparecem no painel, na aba **Medições**.
