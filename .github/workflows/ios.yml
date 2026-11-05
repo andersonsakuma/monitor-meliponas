@@ -1,0 +1,65 @@
+name: Compilar aplicativo iOS
+
+on:
+  push:
+    branches: [main]
+    paths: ['ios-app/**', 'app-android/assets/**', 'logos/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+jobs:
+  compilar:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ferramentas
+        run: brew install xcodegen
+      - name: Preparar telas e projeto
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CODIGO_PROJETO: ${{ secrets.CODIGO_PROJETO }}
+        run: |
+          cd ios-app
+          ./preparar.sh
+          xcodegen generate
+      - name: Compilar para o simulador (confere o código)
+        run: |
+          cd ios-app
+          xcodebuild -project MonitorMeliponas.xcodeproj -scheme MonitorMeliponas \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build | tail -40
+
+  testflight:
+    needs: compilar
+    if: ${{ vars.APPLE_TEAM_ID != '' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ferramentas
+        run: brew install xcodegen
+      - name: Chave da App Store Connect
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          mkdir -p ~/private_keys
+          echo "$ASC_KEY_P8" > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+      - name: Preparar
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CODIGO_PROJETO: ${{ secrets.CODIGO_PROJETO }}
+        run: |
+          cd ios-app
+          ./preparar.sh
+          xcodegen generate
+      - name: Gerar e enviar ao TestFlight
+        run: |
+          cd ios-app
+          AUTH="-allowProvisioningUpdates -authenticationKeyPath $HOME/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 -authenticationKeyID ${{ secrets.ASC_KEY_ID }} -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}"
+          xcodebuild -project MonitorMeliponas.xcodeproj -scheme MonitorMeliponas -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath build/MonitorMeliponas.xcarchive \
+            DEVELOPMENT_TEAM=${{ vars.APPLE_TEAM_ID }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            $AUTH archive | tail -40
+          /usr/libexec/PlistBuddy -c "Add :teamID string ${{ vars.APPLE_TEAM_ID }}" ExportOptions.plist
+          xcodebuild -exportArchive -archivePath build/MonitorMeliponas.xcarchive \
+            -exportOptionsPlist ExportOptions.plist -exportPath build/exportado $AUTH | tail -40

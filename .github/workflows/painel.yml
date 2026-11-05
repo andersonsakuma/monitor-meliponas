@@ -1,0 +1,44 @@
+name: Publicar painel e versão web (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+    paths: ['painel/**', 'app-web/**', 'app-android/assets/**', 'logos/**', '.github/workflows/painel.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  publicar:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar site
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CODIGO_PROJETO: ${{ secrets.CODIGO_PROJETO }}
+        run: |
+          mkdir -p site/logos
+          cp -r painel/* site/
+          cp -f logos/*.png site/logos/ 2>/dev/null || true
+          if [ -n "$SUPABASE_URL" ]; then
+            printf 'window.CONFIG = { url: "%s", chave: "%s" };\n' "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > site/config.js
+          fi
+          CODIGO_PROJETO="$CODIGO_PROJETO" ./app-web/montar.sh site/app
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

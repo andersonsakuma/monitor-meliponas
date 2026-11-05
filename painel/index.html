@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel — Monitor Meliponas | FIS · Amazônia Bee</title>
+<link rel="icon" href="favicon.png">
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{
+  --madeira:#3B2414; --madeira2:#5A3A22; --mel:#F2B233; --mel-claro:#FCEFC9;
+  --folha:#2F6B3A; --folha-claro:#E2F0E3; --alerta:#B3261E; --alerta-claro:#FBE3E1;
+  --papel:#FFFFFF; --fundo:#F3F0EB; --texto:#24180F; --suave:#6B5D52; --linha:#DDD4CA; --vazio:#E6DDD2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--fundo);color:var(--texto);font-family:"Source Sans 3","Segoe UI",Roboto,system-ui,sans-serif;font-size:16px;line-height:1.45}
+button{font:inherit;cursor:pointer}
+input,select{font:inherit;padding:9px 11px;border:1.5px solid var(--linha);border-radius:8px;background:#fff;color:var(--texto)}
+input:focus,select:focus,button:focus-visible{outline:2px solid var(--mel);outline-offset:1px}
+.oculto{display:none!important}
+.topo{background:var(--madeira);color:#fff}
+.topo .in{max-width:1240px;margin:0 auto;padding:14px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.topo h1{font-size:20px;margin:0;font-weight:700;line-height:1.2}
+.topo .sub{color:#E9D8C4;font-size:14px}
+.topo .tit{flex:1;min-width:240px}
+.logos{display:flex;gap:10px;align-items:center}
+.logos img{height:44px;background:#fff;border-radius:6px;padding:4px 8px}.logos .marca{display:flex;align-items:center;gap:6px;background:#fff;border-radius:6px;padding:0 10px 0 0}.logos .marca img{padding:4px}.logos .marca b{color:#7A4A12;font-size:14px}
+.logos .txt{font-weight:700;font-size:13px;background:#fff;color:var(--madeira);border-radius:6px;padding:8px 10px}
+.usuario{font-size:14px;color:#E9D8C4;display:flex;gap:10px;align-items:center}
+.usuario button{background:none;border:1px solid #8A6A50;color:#fff;border-radius:6px;padding:5px 10px}
+.abas{background:#fff;border-bottom:1px solid var(--linha);position:sticky;top:0;z-index:5}
+.abas .in{max-width:1240px;margin:0 auto;padding:0 12px;display:flex;gap:2px;overflow-x:auto}
+.abas button{background:none;border:0;padding:14px 14px 12px;font-weight:600;color:var(--suave);border-bottom:3px solid transparent;white-space:nowrap}
+.abas button.ativo{color:var(--madeira);border-bottom-color:var(--mel)}
+main{max-width:1240px;margin:0 auto;padding:20px}
+h2{font-size:22px;margin:4px 0 14px}
+h3{font-size:17px;margin:0 0 10px}
+.grade{display:grid;gap:14px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.cartao{background:var(--papel);border:1px solid var(--linha);border-radius:12px;padding:16px 18px}
+.num{font-size:34px;font-weight:700;line-height:1.1;color:var(--madeira)}
+.num small{font-size:16px;color:var(--suave);font-weight:600}
+.rot{color:var(--suave);font-size:14px;margin-top:4px}
+.barra{height:8px;border-radius:4px;background:var(--vazio);overflow:hidden;margin-top:8px}
+.barra span{display:block;height:100%;background:var(--folha)}
+.suave{color:var(--suave);font-size:14px}
+.filtros{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px}
+.botao{background:var(--mel);color:var(--madeira);border:0;border-radius:8px;padding:9px 14px;font-weight:700}
+.botao.sec{background:#fff;border:1.5px solid var(--linha);color:var(--texto)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{padding:9px 10px;border-bottom:1px solid var(--linha);text-align:left;vertical-align:top}
+th{font-size:13px;color:var(--suave);font-weight:600;background:#FAF8F5;position:sticky;top:0}
+tr.clic{cursor:pointer} tr.clic:hover td{background:#FBF7EF}
+.rolagem{overflow-x:auto}
+.etq{display:inline-block;font-size:12.5px;font-weight:700;padding:2px 8px;border-radius:20px;margin:1px 3px 1px 0;white-space:nowrap}
+.etq.v{background:var(--folha-claro);color:var(--folha)} .etq.r{background:var(--alerta-claro);color:var(--alerta)} .etq.m{background:var(--mel-claro);color:#7A5208}
+/* mapa de calor */
+.mapa{display:grid;gap:3px;font-size:12px;align-items:center}
+.mapa .c{height:26px;border-radius:4px;background:var(--vazio)}
+.mapa .c.ok{background:var(--folha)} .mapa .c.pr{background:var(--alerta)} .mapa .c.at{background:var(--mel)}
+.mapa .lc{font-weight:700;color:var(--suave);text-align:right;padding-right:6px}
+.mapa .ls{color:var(--suave);text-align:center;white-space:nowrap;overflow:hidden}
+.leg{display:flex;gap:16px;flex-wrap:wrap;font-size:13px;color:var(--suave);margin-top:10px}
+.leg i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+/* gaveta de detalhe */
+.veu{position:fixed;inset:0;background:rgba(36,24,15,.45);z-index:20;display:flex;justify-content:flex-end}
+.gaveta{background:var(--fundo);width:min(820px,100%);height:100%;overflow-y:auto;padding:0 0 30px}
+.gaveta .cab{background:var(--madeira);color:#fff;padding:16px 20px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:2}
+.gaveta .cab h3{margin:0;flex:1;font-size:19px}
+.gaveta .cab button{background:none;border:0;color:#fff;font-size:28px;line-height:1}
+.gaveta .corpo{padding:16px 20px}
+.galeria{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.galeria figure{margin:0;background:#fff;border:1px solid var(--linha);border-radius:10px;overflow:hidden}
+.galeria img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;background:var(--vazio);cursor:zoom-in}
+.galeria figcaption{font-size:12.5px;padding:6px 8px;color:var(--suave)}
+.galeria audio{width:100%;display:block}
+.galeria .aud{padding:10px 8px 4px}
+.colbloco{background:#fff;border:1px solid var(--linha);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.colbloco .t{display:flex;gap:10px;align-items:center;margin-bottom:6px}
+.bola{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;flex:none}
+.ampliada{position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:40;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+.ampliada img{max-width:100%;max-height:100%;border-radius:6px}
+/* entrada */
+.entrada{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--madeira)}
+.entrada .logos{justify-content:center;gap:16px;margin-bottom:6px}.entrada .logos img{height:76px;padding:0}.entrada .logos .marca img{height:60px}.entrada .logos .marca b{font-size:16px}
+.entrada .cx{background:#fff;border-radius:16px;padding:28px;width:min(400px,100%)}
+.entrada h1{font-size:22px;margin:10px 0 4px;color:var(--madeira)}
+.entrada label{display:block;font-weight:600;font-size:14px;margin:14px 0 6px}
+.entrada input{width:100%}
+.entrada .botao{width:100%;margin-top:18px;padding:12px}
+.erro{color:var(--alerta);font-size:14px;margin-top:10px}
+.vazio{padding:30px;text-align:center;color:var(--suave)}
+.graf{position:relative;height:280px}
+.g2{grid-template-columns:repeat(auto-fit,minmax(460px,1fr))}
+@media (max-width:640px){ .g2{grid-template-columns:1fr} }
+.leit{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:8px}
+.leit div{background:#FAF8F5;border:1px solid var(--linha);border-radius:8px;padding:6px;text-align:center}
+.leit b{display:block;color:var(--madeira)} .leit span{font-size:12px;color:var(--suave)}
+@media (max-width:640px){ .leit{grid-template-columns:repeat(4,1fr)} }
+@media (max-width:640px){ main{padding:14px} .num{font-size:28px} }
+</style>
+</head>
+<body>
+
+<div id="telaEntrada" class="entrada oculto">
+  <div class="cx">
+    <div class="logos" id="logosEntrada"></div>
+    <h1>Painel de monitoramento</h1>
+    <div class="suave">Protótipo de Meliponicultura — Cametá do Ramos (AM)</div>
+    <label for="email">E-mail</label><input id="email" type="email" autocomplete="username">
+    <label for="senha">Senha</label><input id="senha" type="password" autocomplete="current-password">
+    <button class="botao" id="btEntrar">Entrar</button>
+    <div class="erro" id="erroEntrada"></div>
+    <p class="suave" style="text-align:center;margin-top:18px">Monitor? <a href="instalar.html">Instale o aplicativo pelo QR code</a></p>
+  </div>
+</div>
+
+<div id="telaPainel" class="oculto">
+  <div class="topo"><div class="in">
+    <div class="logos" id="logosTopo"></div>
+    <div class="tit"><h1>Monitor Meliponas — painel da equipe</h1><div class="sub">FIS | IPÊ e Amazônia Bee · Protótipo de Meliponicultura, Cametá do Ramos (AM)</div></div>
+    <div class="usuario"><a href="instalar.html" target="_blank" style="color:#fff;border:1px solid #8A6A50;border-radius:6px;padding:5px 10px;text-decoration:none">Instalar aplicativo</a><span id="uEmail"></span><button id="btAtualizar">Atualizar</button><button id="btSair">Sair</button></div>
+  </div></div>
+  <div class="abas"><div class="in" id="abas">
+    <button data-a="geral" class="ativo">Visão geral</button>
+    <button data-a="visitas">Visitas</button>
+    <button data-a="colonias">Colônias</button>
+    <button data-a="medicoes">Medições</button>
+    <button data-a="midias">Fotos e áudios</button>
+    <button data-a="problemas">Problemas</button>
+  </div></div>
+  <main id="conteudo"><div class="vazio">Carregando…</div></main>
+</div>
+
+<div id="veu" class="veu oculto"><div class="gaveta"><div class="cab"><h3 id="gTitulo"></h3><button id="gFechar" aria-label="Fechar">×</button></div><div class="corpo" id="gCorpo"></div></div></div>
+<div id="ampliada" class="ampliada oculto"><img id="imgAmpliada" alt=""></div>
+
+<script>
+var CFG = window.CONFIG || {};
+var sb = (CFG.url && CFG.chave) ? supabase.createClient(CFG.url, CFG.chave) : null;
+var D = {visitas:[], colonias:[], dispositivos:[]}, aba='geral', urls={};
+var LOGOS = '<img src="logos/ipe-fis.png" alt="IPÊ | FIS" onerror="this.outerHTML=\'<span class=txt>IPÊ | FIS</span>\'"><span class="marca"><img src="logos/amazonia-bee.png" alt="Amazônia Bee"><b>Amazônia Bee</b></span>';
+var NOMES_PROB = {dados:'dados não baixados', mov:'sem movimento', pragas:'pragas', caixa:'caixa com estrago', placa:'placa ou fios danificados', aparelho:'aparelho mexido/sumiu'};
+
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function dois(n){ return (n<10?'0':'')+n; }
+function dt(iso){ if(!iso) return '—'; var d=new Date(iso); return dois(d.getDate())+'/'+dois(d.getMonth()+1)+'/'+d.getFullYear(); }
+function hr(iso){ if(!iso) return ''; var d=new Date(iso); return dois(d.getHours())+':'+dois(d.getMinutes()); }
+function inicioSemana(d){ d=new Date(d); var w=(d.getDay()+6)%7; d.setHours(0,0,0,0); d.setDate(d.getDate()-w); return d; }
+
+$('logosEntrada').innerHTML = LOGOS; $('logosTopo').innerHTML = LOGOS;
+
+/* ---------- acesso ---------- */
+async function iniciar(){
+  if(!sb){ $('telaEntrada').classList.remove('oculto'); $('erroEntrada').textContent='Painel sem configuração: preencha config.js com o endereço e a chave do Supabase.'; $('btEntrar').disabled=true; return; }
+  var s = await sb.auth.getSession();
+  if(s.data && s.data.session) entrarNoPainel(s.data.session.user); else $('telaEntrada').classList.remove('oculto');
+}
+$('btEntrar').onclick = async function(){
+  $('erroEntrada').textContent='';
+  var r = await sb.auth.signInWithPassword({email:$('email').value.trim(), password:$('senha').value});
+  if(r.error){ $('erroEntrada').textContent = 'Não foi possível entrar: '+(r.error.message==='Invalid login credentials'?'e-mail ou senha incorretos.':r.error.message); return; }
+  entrarNoPainel(r.data.user);
+};
+$('senha').addEventListener('keydown',function(e){ if(e.key==='Enter') $('btEntrar').click(); });
+$('btSair').onclick = async function(){ await sb.auth.signOut(); location.reload(); };
+$('btAtualizar').onclick = function(){ carregar(); };
+function entrarNoPainel(u){ $('telaEntrada').classList.add('oculto'); $('telaPainel').classList.remove('oculto'); $('uEmail').textContent=u.email; carregar(); }
+
+/* ---------- dados ---------- */
+async function carregar(){
+  $('conteudo').innerHTML='<div class="vazio">Carregando…</div>';
+  var r1 = await sb.from('visitas').select('*, registros(*), midias(*)').order('inicio',{ascending:false});
+  var r2 = await sb.from('colonias').select('*').order('numero');
+  var r3 = await sb.from('dispositivos').select('*').order('ultimo_contato',{ascending:false});
+  var erro = r1.error||r2.error||r3.error;
+  if(erro){ $('conteudo').innerHTML='<div class="cartao erro">Erro ao carregar: '+esc(erro.message)+'</div>'; return; }
+  D.visitas=r1.data; D.colonias=r2.data; D.dispositivos=r3.data;
+  D.visitas.forEach(function(v){ v.registros.sort(function(a,b){return a.colonia-b.colonia;}); });
+  mostrar();
+}
+function todosRegistros(){ var l=[]; D.visitas.forEach(function(v){ v.registros.forEach(function(r){ l.push({v:v,r:r}); }); }); return l; }
+function todasMidias(){ var l=[]; D.visitas.forEach(function(v){ v.midias.forEach(function(m){ l.push({v:v,m:m}); }); }); l.sort(function(a,b){ return new Date(b.v.inicio)-new Date(a.v.inicio); }); return l; }
+async function assinar(caminhos){
+  var faltam = caminhos.filter(function(c){ return !urls[c]; });
+  if(!faltam.length) return;
+  for(var i=0;i<faltam.length;i+=100){
+    var r = await sb.storage.from('midias').createSignedUrls(faltam.slice(i,i+100), 3600);
+    (r.data||[]).forEach(function(x){ if(x.signedUrl) urls[x.path]=x.signedUrl; });
+  }
+}
+
+/* ---------- abas ---------- */
+document.querySelectorAll('#abas button').forEach(function(b){ b.onclick=function(){ aba=b.dataset.a; document.querySelectorAll('#abas button').forEach(function(x){ x.classList.toggle('ativo',x===b); }); mostrar(); }; });
+function mostrar(){ graficos.forEach(function(g){ g.destroy(); }); graficos=[]; ({geral:telaGeral,visitas:telaVisitas,colonias:telaColonias,medicoes:telaMedicoes,midias:telaMidias,problemas:telaProblemas})[aba](); }
+
+/* ---------- visão geral ---------- */
+function telaGeral(){
+  var agora=Date.now(), q4=agora-28*864e5, s1=agora-7*864e5;
+  var monitores=['Sr. Jatir','Dona Maria Diniz'];
+  D.visitas.forEach(function(v){ if(monitores.indexOf(v.monitor)<0) monitores.push(v.monitor); });
+  var h='<div class="grade g4">';
+  monitores.forEach(function(m){
+    var n=D.visitas.filter(function(v){ return v.monitor===m && new Date(v.inicio)>q4; }).length;
+    var ult=D.visitas.filter(function(v){ return v.monitor===m; })[0];
+    h+='<div class="cartao"><div class="num">'+n+' <small>de 4</small></div><div class="rot">visitas de <b>'+esc(m)+'</b> nas últimas 4 semanas</div><div class="barra"><span style="width:'+Math.min(100,n/4*100)+'%"></span></div><div class="suave" style="margin-top:8px">Última: '+(ult?dt(ult.inicio)+' às '+hr(ult.inicio):'nenhuma')+'</div></div>';
+  });
+  var regs4=todosRegistros().filter(function(x){ return new Date(x.v.inicio)>q4; });
+  var baix=regs4.filter(function(x){ return x.r.dados_baixados==='Sim'; }).length;
+  var probSem={}; todosRegistros().forEach(function(x){ if(new Date(x.v.inicio)>s1 && x.r.problemas.length) probSem[x.r.colonia]=1; });
+  var nm=todasMidias().length;
+  h+='<div class="cartao"><div class="num">'+(regs4.length?Math.round(baix/regs4.length*100):0)+'<small>%</small></div><div class="rot">das coletas com dados baixados dos sensores (4 semanas)</div></div>';
+  h+='<div class="cartao"><div class="num" style="color:'+(Object.keys(probSem).length?'var(--alerta)':'var(--folha)')+'">'+Object.keys(probSem).length+' <small>de 12</small></div><div class="rot">colônias com problema nos últimos 7 dias</div></div>';
+  h+='<div class="cartao"><div class="num">'+nm+'</div><div class="rot">fotos e áudios recebidos</div></div></div>';
+
+  // mapa de calor: colônias x semanas
+  var semanas=[], ini=inicioSemana(agora); for(var i=15;i>=0;i--){ var d=new Date(ini); d.setDate(d.getDate()-7*i); semanas.push(d); }
+  var est={}; todosRegistros().forEach(function(x){
+    var k=x.r.colonia+'|'+inicioSemana(x.v.inicio).getTime(), s=x.r.problemas.length?3:((x.r.movimento==='Pouco'||x.r.caixa==='Úmida'||x.r.placa_fios==='Sujo')?2:1);
+    est[k]=Math.max(est[k]||0,s);
+  });
+  h+='<div class="cartao" style="margin-top:14px"><h3>Situação das colônias por semana</h3><p class="suave" style="margin:0 0 12px">Cada quadro é uma semana (segunda a domingo). Vale a pior situação registrada na semana pelos dois monitores.</p><div class="rolagem"><div class="mapa" style="grid-template-columns:44px repeat(16,minmax(26px,1fr));min-width:560px">';
+  h+='<div></div>'; semanas.forEach(function(s,i){ h+='<div class="ls">'+(i%2===0?dois(s.getDate())+'/'+dois(s.getMonth()+1):'')+'</div>'; });
+  for(var c=1;c<=12;c++){
+    h+='<div class="lc">'+c+'</div>';
+    semanas.forEach(function(s){ var e=est[c+'|'+s.getTime()]||0; h+='<div class="c '+(['','ok','at','pr'][e])+'" title="Colônia '+c+', semana de '+dois(s.getDate())+'/'+dois(s.getMonth()+1)+': '+(['sem registro','tudo certo','atenção','problema'][e])+'"></div>'; });
+  }
+  h+='</div></div><div class="leg"><span><i style="background:var(--folha)"></i>tudo certo</span><span><i style="background:var(--mel)"></i>atenção (pouco movimento, caixa úmida, placa suja)</span><span><i style="background:var(--alerta)"></i>problema</span><span><i style="background:var(--vazio)"></i>sem registro</span></div></div>';
+
+  h+='<div class="cartao" style="margin-top:14px"><h3>Celulares dos monitores</h3><div class="rolagem"><table><tr><th>Monitor</th><th>Último contato</th><th>Versão do aplicativo</th><th>Primeiro contato</th></tr>';
+  if(!D.dispositivos.length) h+='<tr><td colspan="4" class="suave">Nenhum celular sincronizou ainda.</td></tr>';
+  D.dispositivos.forEach(function(d){ var dias=Math.floor((agora-new Date(d.ultimo_contato))/864e5);
+    h+='<tr><td>'+esc(d.monitor)+'</td><td>'+dt(d.ultimo_contato)+' '+hr(d.ultimo_contato)+(dias>7?' <span class="etq r">há '+dias+' dias</span>':'')+'</td><td>'+esc(d.versao_app)+'</td><td>'+dt(d.primeiro_contato)+'</td></tr>'; });
+  h+='</table></div></div>';
+  $('conteudo').innerHTML=h;
+}
+
+/* ---------- visitas ---------- */
+var fMon='', fDe='', fAte='';
+function visitasFiltradas(){
+  return D.visitas.filter(function(v){
+    if(fMon && v.monitor!==fMon) return false;
+    if(fDe && new Date(v.inicio)<new Date(fDe+'T00:00')) return false;
+    if(fAte && new Date(v.inicio)>new Date(fAte+'T23:59')) return false;
+    return true;
+  });
+}
+function telaVisitas(){
+  var mons={}; D.visitas.forEach(function(v){ mons[v.monitor]=1; });
+  var h='<h2>Visitas</h2><div class="filtros"><select id="fMon"><option value="">Todos os monitores</option>'+Object.keys(mons).map(function(m){ return '<option'+(m===fMon?' selected':'')+'>'+esc(m)+'</option>'; }).join('')+'</select>'+
+    '<label class="suave">De <input type="date" id="fDe" value="'+fDe+'"></label><label class="suave">até <input type="date" id="fAte" value="'+fAte+'"></label>'+
+    '<button class="botao sec" id="btCsv">Baixar planilha (CSV)</button></div>';
+  var lista=visitasFiltradas();
+  h+='<div class="cartao rolagem" style="padding:0"><table><tr><th>Data</th><th>Monitor</th><th>Horário</th><th>Colônias</th><th>Dados baixados</th><th>Situação</th><th>Fotos / áudios</th><th>Dados dos sensores</th></tr>';
+  if(!lista.length) h+='<tr><td colspan="8" class="vazio">Nenhuma visita no período.</td></tr>';
+  lista.forEach(function(v){
+    var pr=v.registros.filter(function(r){ return r.problemas.length; }).length, bx=v.registros.filter(function(r){ return r.dados_baixados==='Sim'; }).length;
+    var f=v.midias.filter(function(m){return m.tipo==='foto';}).length, a=v.midias.length-f;
+    h+='<tr class="clic" data-v="'+esc(v.id)+'"><td><b>'+dt(v.inicio)+'</b></td><td>'+esc(v.monitor)+'</td><td>'+hr(v.inicio)+(v.fim?'–'+hr(v.fim):'')+'</td><td>'+v.registros.length+'/12</td><td>'+bx+'/12</td><td>'+(pr?'<span class="etq r">'+pr+' com problema</span>':'<span class="etq v">sem problemas</span>')+'</td><td>'+f+' / '+a+'</td><td>'+(v.dados_enviados_sistema?'<span class="etq v">enviados</span>':'<span class="etq m">pendentes</span>')+'</td></tr>';
+  });
+  h+='</table></div>';
+  $('conteudo').innerHTML=h;
+  $('fMon').onchange=function(){ fMon=this.value; telaVisitas(); };
+  $('fDe').onchange=function(){ fDe=this.value; telaVisitas(); };
+  $('fAte').onchange=function(){ fAte=this.value; telaVisitas(); };
+  $('btCsv').onclick=baixarCsv;
+  document.querySelectorAll('tr[data-v]').forEach(function(tr){ tr.onclick=function(){ abrirVisita(tr.dataset.v); }; });
+}
+async function abrirVisita(id){
+  var v=D.visitas.find(function(x){ return x.id===id; });
+  $('gTitulo').textContent='Visita de '+dt(v.inicio)+' — '+v.monitor;
+  await assinar(v.midias.map(function(m){ return m.caminho; }));
+  var h='<p class="suave">Horário: '+hr(v.inicio)+(v.fim?' às '+hr(v.fim):'')+' · Recebida no servidor em '+dt(v.recebido_em)+' '+hr(v.recebido_em)+'</p>';
+  h+='<label style="display:flex;gap:10px;align-items:center;margin:0 0 14px"><input type="checkbox" id="chkSens" '+(v.dados_enviados_sistema?'checked':'')+'> Dados dos sensores enviados ao sistema</label>';
+  for(var c=1;c<=12;c++){
+    var r=v.registros.find(function(x){ return x.colonia===c; }), ms=v.midias.filter(function(m){ return m.colonia===c; });
+    h+=blocoColonia(c,r,ms);
+  }
+  $('gCorpo').innerHTML=h; abrirGaveta();
+  $('chkSens').onchange=async function(){ var val=this.checked; var r=await sb.from('visitas').update({dados_enviados_sistema:val}).eq('id',v.id); if(r.error){ alert('Não foi possível salvar: '+r.error.message); this.checked=!val; } else v.dados_enviados_sistema=val; };
+}
+function blocoColonia(c,r,ms,titulo){
+  var cor = !r ? 'var(--vazio)' : (r.problemas.length?'var(--alerta)':'var(--folha)');
+  var h='<div class="colbloco"><div class="t"><div class="bola" style="background:'+cor+';'+(!r?'color:var(--suave)':'')+'">'+c+'</div><div><b>'+(titulo||'Colônia '+c)+'</b>'+(r&&r.hora?' <span class="suave">às '+hr(r.hora)+'</span>':'')+'</div></div>';
+  if(!r) h+='<div class="suave">Não registrada nesta visita.</div>';
+  else {
+    h+='<div>'+(r.problemas.length? r.problemas.map(function(p){ return '<span class="etq r">'+NOMES_PROB[p]+'</span>'; }).join(''):'<span class="etq v">tudo certo</span>')+(r.manejo&&r.manejo!=='Nenhum'?'<span class="etq m">'+esc(r.manejo)+'</span>':'')+'</div>';
+    h+='<div class="suave" style="margin-top:6px">Dados: '+esc(r.dados_baixados)+' · Movimento: '+esc(r.movimento)+' · Pragas: '+esc(r.pragas)+(r.praga_qual?' ('+esc(r.praga_qual)+')':'')+' · Caixa: '+esc(r.caixa)+' · Placa e fios: '+esc(r.placa_fios)+' · Aparelho: '+esc(r.aparelho)+'</div>';
+    if(r.leitura && r.leitura.agora) h+=htmlLeitura(r.leitura);
+    if(r.observacoes) h+='<div style="margin-top:6px">“'+esc(r.observacoes)+'”</div>';
+  }
+  if(ms && ms.length) h+='<div class="galeria" style="margin-top:10px">'+ms.map(function(m){ return htmlMidia(m); }).join('')+'</div>';
+  return h+'</div>';
+}
+function htmlMidia(m, legenda){
+  var u=urls[m.caminho];
+  if(m.tipo==='foto') return '<figure>'+(u?'<img loading="lazy" src="'+u+'" onclick="ampliar(this.src)" alt="Foto da colônia '+m.colonia+'">':'<img alt="">')+(legenda?'<figcaption>'+legenda+'</figcaption>':'')+'</figure>';
+  return '<figure><div class="aud">Áudio'+(m.duracao_s?' · '+Math.floor(m.duracao_s/60)+':'+dois(m.duracao_s%60):'')+'</div>'+(u?'<audio controls preload="none" src="'+u+'"></audio>':'')+(legenda?'<figcaption>'+legenda+'</figcaption>':'')+'</figure>';
+}
+function ampliar(src){ $('imgAmpliada').src=src; $('ampliada').classList.remove('oculto'); }
+$('ampliada').onclick=function(){ this.classList.add('oculto'); };
+function abrirGaveta(){ $('veu').classList.remove('oculto'); $('veu').querySelector('.gaveta').scrollTop=0; }
+$('gFechar').onclick=function(){ $('veu').classList.add('oculto'); };
+$('veu').onclick=function(e){ if(e.target===this) this.classList.add('oculto'); };
+document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ $('veu').classList.add('oculto'); $('ampliada').classList.add('oculto'); } });
+
+function baixarCsv(){
+  var q=function(s){ s=String(s==null?'':s); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  var col={}; D.colonias.forEach(function(c){ col[c.numero]=c; });
+  var t='data;hora_inicio;hora_fim;monitor;colonia;especie;ambiente;melgueira;aparelho_n;dados_baixados;movimento;pragas;qual_praga;caixa;placa_fios;aparelho;manejo;problemas;observacoes;fotos;audios;dados_sensores_enviados\n';
+  visitasFiltradas().slice().reverse().forEach(function(v){ v.registros.forEach(function(r){ var c=col[r.colonia]||{}, ms=v.midias.filter(function(m){return m.colonia===r.colonia;});
+    t+=[dt(v.inicio),hr(v.inicio),hr(v.fim),v.monitor,r.colonia,c.especie,c.ambiente,c.melgueira,c.aparelho,r.dados_baixados,r.movimento,r.pragas,r.praga_qual,r.caixa,r.placa_fios,r.aparelho,r.manejo,r.problemas.join(', '),r.observacoes,
+       ms.filter(function(m){return m.tipo==='foto';}).length, ms.filter(function(m){return m.tipo==='audio';}).length, v.dados_enviados_sistema?'Sim':'Não'].map(q).join(';')+'\n'; }); });
+  var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+t],{type:'text/csv;charset=utf-8'})); a.download='visitas_meliponicultura_'+new Date().toISOString().slice(0,10)+'.csv'; a.click();
+}
+
+/* ---------- colônias ---------- */
+function telaColonias(){
+  var ult={}; todosRegistros().forEach(function(x){ if(!ult[x.r.colonia] || new Date(x.v.inicio)>new Date(ult[x.r.colonia].v.inicio)) ult[x.r.colonia]=x; });
+  var h='<h2>Colônias</h2><p class="suave">Identificação preenchida pelos monitores no aplicativo ou editada aqui. Clique no número para ver o histórico.</p><div class="cartao rolagem" style="padding:0"><table><tr><th>Nº</th><th>Espécie</th><th>Ambiente</th><th>Melgueira</th><th>Aparelho</th><th>Local</th><th>Último registro</th></tr>';
+  D.colonias.forEach(function(c){
+    var u=ult[c.numero];
+    h+='<tr><td><button class="botao sec" data-hist="'+c.numero+'">'+c.numero+'</button></td>'+
+      sel(c,'especie',['Melipona interrupta','Melipona seminigra'])+sel(c,'ambiente',['Igapó','Terra firme'])+sel(c,'melgueira',['Nova','Antiga'])+
+      '<td><input data-c="'+c.numero+'" data-f="aparelho" value="'+esc(c.aparelho)+'" style="width:90px"></td><td><input data-c="'+c.numero+'" data-f="local" value="'+esc(c.local)+'"></td>'+
+      '<td>'+(u?dt(u.v.inicio)+' '+(u.r.problemas.length?'<span class="etq r">problema</span>':'<span class="etq v">ok</span>'):'<span class="suave">—</span>')+'</td></tr>';
+  });
+  h+='</table></div>';
+  $('conteudo').innerHTML=h;
+  document.querySelectorAll('[data-c]').forEach(function(el){ el.onchange=async function(){
+    var upd={}; upd[el.dataset.f]=el.value; upd.atualizado_por=$('uEmail').textContent; upd.atualizado_em=new Date().toISOString();
+    var r=await sb.from('colonias').update(upd).eq('numero',+el.dataset.c);
+    if(r.error) alert('Não foi possível salvar: '+r.error.message); else { var c=D.colonias.find(function(x){return x.numero===+el.dataset.c;}); c[el.dataset.f]=el.value; }
+  }; });
+  document.querySelectorAll('[data-hist]').forEach(function(b){ b.onclick=function(){ abrirHistorico(+b.dataset.hist); }; });
+}
+function sel(c,f,ops){ return '<td><select data-c="'+c.numero+'" data-f="'+f+'"><option value="">—</option>'+ops.map(function(o){ return '<option'+(c[f]===o?' selected':'')+'>'+o+'</option>'; }).join('')+'</select></td>'; }
+async function abrirHistorico(n){
+  var c=D.colonias.find(function(x){return x.numero===n;});
+  $('gTitulo').textContent='Colônia '+n+(c.especie?' — '+c.especie:'');
+  var itens=D.visitas.map(function(v){ return {v:v,r:v.registros.find(function(r){return r.colonia===n;}),ms:v.midias.filter(function(m){return m.colonia===n;})}; }).filter(function(x){ return x.r||x.ms.length; });
+  await assinar([].concat.apply([],itens.map(function(x){ return x.ms.map(function(m){return m.caminho;}); })));
+  var h='<p class="suave">'+[c.ambiente,c.melgueira?'melgueira '+c.melgueira.toLowerCase():'',c.aparelho?'aparelho nº '+c.aparelho:'',c.local].filter(Boolean).map(esc).join(' · ')+'</p>';
+  if(!itens.length) h+='<div class="vazio">Sem registros desta colônia.</div>';
+  itens.forEach(function(x){ h+=blocoColonia(n,x.r,x.ms,dt(x.v.inicio)+' — '+esc(x.v.monitor)); });
+  $('gCorpo').innerHTML=h; abrirGaveta();
+}
+
+
+/* ---------- medições dos aparelhos ---------- */
+var graficos=[], mCol=1, mDias=7;
+function fx(v,dec,u){ return v==null||isNaN(v)?'—':(+v).toFixed(dec)+(u||''); }
+function htmlLeitura(l){
+  var a=l.agora||{}, tc=a.tc||[];
+  return '<div class="suave" style="margin-top:8px">Aparelho '+esc(l.aparelho||'')+' · '+(l.n||0)+' registro(s) baixado(s)</div><div class="leit">'+
+    '<div><b>'+fx(a.t,1,'°')+'</b><span>Ambiente</span></div><div><b>'+fx(a.ur,0,'%')+'</b><span>Umidade</span></div><div><b>'+(a.lux==null?'—':Math.round(a.lux))+'</b><span>Luz (lux)</span></div>'+
+    '<div><b>'+fx(tc[0],1,'°')+'</b><span>Fundo</span></div><div><b>'+fx(tc[1],1,'°')+'</b><span>Divisão</span></div><div><b>'+fx(tc[2],1,'°')+'</b><span>Melgueira</span></div><div><b>'+fx(a.peso,2,' kg')+'</b><span>Peso</span></div></div>';
+}
+async function lerTudo(consulta){
+  var todos=[], i=0;
+  while(true){ var r=await consulta().range(i,i+999); if(r.error) throw r.error; todos=todos.concat(r.data); if(r.data.length<1000) break; i+=1000; if(i>200000) break; }
+  return todos;
+}
+function grafico(id,series,opc){
+  opc=opc||{};
+  var g=new Chart(document.getElementById(id),{type:'line',data:{datasets:series.map(function(s){ return {label:s.rotulo,data:s.pontos,borderColor:s.cor,backgroundColor:s.cor,borderWidth:1.6,pointRadius:0,tension:.2,spanGaps:false}; })},
+    options:{animation:false,maintainAspectRatio:false,parsing:false,normalized:true,interaction:{mode:'nearest',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{boxWidth:12}},tooltip:{callbacks:{title:function(it){ var d=new Date(it[0].parsed.x); return dt(d.toISOString())+' '+hr(d.toISOString()); }}}},
+      scales:{x:{type:'linear',ticks:{maxTicksLimit:8,callback:function(v){ var d=new Date(v); return opc.diario?dois(d.getDate())+'/'+dois(d.getMonth()+1):dois(d.getDate())+'/'+dois(d.getMonth()+1)+' '+dois(d.getHours())+'h'; }}},y:{title:{display:!!opc.y,text:opc.y||''}}}}});
+  graficos.push(g); return g;
+}
+async function telaMedicoes(){
+  $('conteudo').innerHTML='<div class="vazio">Carregando medições…</div>';
+  var desde=mDias?new Date(Date.now()-mDias*864e5).toISOString():'1970-01-01T00:00:00Z';
+  var ap, dados, diarios;
+  try{
+    ap=(await sb.from('aparelhos').select('*').order('colonia')).data||[];
+    dados=await lerTudo(function(){ return sb.from('medicoes').select('momento,temp_amb,umidade,lux,tc_fundo,tc_divisao,tc_melgueira,peso_kg').eq('colonia',mCol).not('momento','is',null).gte('momento',desde).order('momento'); });
+    diarios=await lerTudo(function(){ return sb.from('medicoes_diarias').select('colonia,dia,peso_medio,tc_fundo').gte('dia',desde.slice(0,10)).order('dia'); });
+  }catch(e){ $('conteudo').innerHTML='<div class="cartao erro">Erro ao carregar: '+esc(e.message)+'</div>'; return; }
+  var h='<h2>Medições dos aparelhos</h2><div class="filtros"><select id="mCol">';
+  for(var c=1;c<=12;c++){ var a=ap.find(function(x){return x.colonia===c;}); h+='<option value="'+c+'"'+(c===mCol?' selected':'')+'>Colônia '+c+(a?' — '+a.id:'')+'</option>'; }
+  h+='</select><select id="mDias">'+[[1,'Último dia'],[7,'Últimos 7 dias'],[30,'Últimos 30 dias'],[90,'Últimos 90 dias'],[0,'Todo o período']].map(function(o){ return '<option value="'+o[0]+'"'+(o[0]===mDias?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'+
+     '<button class="botao sec" id="btCsvM">Baixar planilha da colônia (CSV)</button><span class="suave">'+dados.length+' medição(ões)</span></div>';
+  if(!dados.length){ h+='<div class="cartao vazio">Sem medições desta colônia no período. Elas chegam quando o monitor baixa os dados do aparelho e o celular sincroniza.</div>'; }
+  else {
+    var ult=dados[dados.length-1], pri=dados[0];
+    var pesos=dados.filter(function(d){return d.peso_kg!=null;});
+    var dp=pesos.length>1?(pesos[pesos.length-1].peso_kg-pesos[0].peso_kg):null;
+    var fundos=dados.filter(function(d){return d.tc_fundo!=null;}).map(function(d){return +d.tc_fundo;});
+    var medF=fundos.length?fundos.reduce(function(a,b){return a+b;},0)/fundos.length:null;
+    h+='<div class="grade g4"><div class="cartao"><div class="num">'+fx(ult.peso_kg,2)+'<small> kg</small></div><div class="rot">peso na última medição ('+dt(ult.momento)+' '+hr(ult.momento)+')</div></div>'+
+       '<div class="cartao"><div class="num" style="color:'+(dp==null?'var(--madeira)':dp>=0?'var(--folha)':'var(--alerta)')+'">'+(dp==null?'—':(dp>=0?'+':'')+dp.toFixed(2))+'<small> kg</small></div><div class="rot">variação do peso no período</div></div>'+
+       '<div class="cartao"><div class="num">'+fx(medF,1)+'<small> °C</small></div><div class="rot">temperatura média no fundo do ninho</div></div>'+
+       '<div class="cartao"><div class="num">'+fx(ult.temp_amb,1)+'<small> °C</small></div><div class="rot">temperatura ambiente na última medição · umidade '+fx(ult.umidade,0,'%')+'</div></div></div>';
+    h+='<div class="grade g2" style="margin-top:14px"><div class="cartao"><h3>Temperaturas (°C)</h3><div class="graf"><canvas id="gT"></canvas></div></div><div class="cartao"><h3>Peso da colmeia (kg)</h3><div class="graf"><canvas id="gP"></canvas></div></div>'+
+       '<div class="cartao"><h3>Umidade do ambiente (%)</h3><div class="graf"><canvas id="gU"></canvas></div></div><div class="cartao"><h3>Iluminação (lux)</h3><div class="graf"><canvas id="gL"></canvas></div></div></div>';
+  }
+  h+='<div class="cartao" style="margin-top:14px"><h3>Comparação entre colônias — peso médio diário (kg)</h3><p class="suave" style="margin:0 0 8px">Linhas cheias: melgueira nova. Tracejadas: melgueira antiga.</p><div class="graf" style="height:320px"><canvas id="gC"></canvas></div></div>';
+  h+='<div class="cartao" style="margin-top:14px"><h3>Aparelhos</h3><div class="rolagem"><table><tr><th>Aparelho</th><th>Colônia</th><th>Firmware</th><th>Último download</th><th>Último registro</th></tr>';
+  if(!ap.length) h+='<tr><td colspan="5" class="suave">Nenhum aparelho enviou dados ainda.</td></tr>';
+  ap.forEach(function(a){ var dias=a.ultimo_download?Math.floor((Date.now()-new Date(a.ultimo_download))/864e5):null;
+    h+='<tr><td>'+esc(a.id)+'</td><td>'+(a.colonia||'—')+'</td><td>'+esc(a.firmware)+'</td><td>'+(a.ultimo_download?dt(a.ultimo_download)+' '+hr(a.ultimo_download)+(dias>7?' <span class="etq r">há '+dias+' dias</span>':''):'—')+'</td><td>'+(a.ultimo_seq||'—')+'</td></tr>'; });
+  h+='</table></div></div>';
+  $('conteudo').innerHTML=h;
+  $('mCol').onchange=function(){ mCol=+this.value; mostrar(); };
+  $('mDias').onchange=function(){ mDias=+this.value; mostrar(); };
+  $('btCsvM').onclick=function(){
+    var t='momento;temp_amb;umidade;lux;tc_fundo;tc_divisao;tc_melgueira;peso_kg\n';
+    dados.forEach(function(d){ t+=[dt(d.momento)+' '+hr(d.momento),d.temp_amb,d.umidade,d.lux,d.tc_fundo,d.tc_divisao,d.tc_melgueira,d.peso_kg].map(function(x){ return x==null?'':String(x).replace('.',','); }).join(';')+'\n'; });
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\ufeff'+t],{type:'text/csv;charset=utf-8'})); a.download='medicoes_colonia'+mCol+'.csv'; a.click();
+  };
+  if(window.Chart && dados.length){
+    var pts=function(c){ return dados.filter(function(d){return d[c]!=null;}).map(function(d){ return {x:new Date(d.momento).getTime(),y:+d[c]}; }); };
+    grafico('gT',[{rotulo:'Ambiente',pontos:pts('temp_amb'),cor:'#8A6A50'},{rotulo:'Fundo',pontos:pts('tc_fundo'),cor:'#B3261E'},{rotulo:'Divisão',pontos:pts('tc_divisao'),cor:'#E08A1E'},{rotulo:'Melgueira',pontos:pts('tc_melgueira'),cor:'#2F6B3A'}]);
+    grafico('gP',[{rotulo:'Peso',pontos:pts('peso_kg'),cor:'#3B2414'}]);
+    grafico('gU',[{rotulo:'Umidade',pontos:pts('umidade'),cor:'#2E6FA8'}]);
+    grafico('gL',[{rotulo:'Luz',pontos:pts('lux'),cor:'#E0A21E'}]);
+  }
+  if(window.Chart){
+    var cores=['#3B2414','#B3261E','#E08A1E','#2F6B3A','#2E6FA8','#7A4A9E','#8A6A50','#C2185B','#00897B','#5D4037','#F2B233','#455A64'];
+    var series=[]; for(var c2=1;c2<=12;c2++){ var dd=diarios.filter(function(d){return d.colonia===c2 && d.peso_medio!=null;}); if(!dd.length) continue;
+      var col=D.colonias.find(function(x){return x.numero===c2;})||{};
+      series.push({rotulo:'Col. '+c2,cor:cores[c2-1],pontos:dd.map(function(d){ return {x:new Date(d.dia+'T12:00:00').getTime(),y:+d.peso_medio}; }),antiga:col.melgueira==='Antiga'}); }
+    if(series.length){ var g=grafico('gC',series,{diario:true}); g.data.datasets.forEach(function(ds,i){ if(series[i].antiga) ds.borderDash=[5,4]; ds.pointRadius=2; }); g.update(); }
+    else document.getElementById('gC').parentNode.innerHTML='<div class="vazio">Sem medições no período.</div>';
+  }
+}
+
+/* ---------- fotos e áudios ---------- */
+var fTipo='', fCol='', limite=60;
+async function telaMidias(){
+  var lista=todasMidias().filter(function(x){ return (!fTipo||x.m.tipo===fTipo) && (!fCol||x.m.colonia===+fCol); });
+  var vis=lista.slice(0,limite);
+  $('conteudo').innerHTML='<div class="vazio">Carregando arquivos…</div>';
+  await assinar(vis.map(function(x){ return x.m.caminho; }));
+  var h='<h2>Fotos e áudios</h2><div class="filtros"><select id="fTipo"><option value="">Fotos e áudios</option><option value="foto"'+(fTipo==='foto'?' selected':'')+'>Só fotos</option><option value="audio"'+(fTipo==='audio'?' selected':'')+'>Só áudios</option></select><select id="fCol"><option value="">Todas as colônias</option>';
+  for(var c=1;c<=12;c++) h+='<option value="'+c+'"'+(+fCol===c?' selected':'')+'>Colônia '+c+'</option>';
+  h+='</select><span class="suave">'+lista.length+' arquivo(s)</span></div>';
+  h+= vis.length? '<div class="galeria">'+vis.map(function(x){ return htmlMidia(x.m,'Col. '+x.m.colonia+' · '+dt(x.v.inicio)+' · '+esc(x.v.monitor)); }).join('')+'</div>' : '<div class="cartao vazio">Nenhum arquivo recebido ainda.</div>';
+  if(lista.length>limite) h+='<p style="text-align:center"><button class="botao sec" id="btMais">Mostrar mais</button></p>';
+  $('conteudo').innerHTML=h;
+  $('fTipo').onchange=function(){ fTipo=this.value; limite=60; telaMidias(); };
+  $('fCol').onchange=function(){ fCol=this.value; limite=60; telaMidias(); };
+  if($('btMais')) $('btMais').onclick=function(){ limite+=60; telaMidias(); };
+}
+
+/* ---------- problemas ---------- */
+function telaProblemas(){
+  var lista=todosRegistros().filter(function(x){ return x.r.problemas.length; });
+  var h='<h2>Problemas registrados</h2><p class="suave">Colônias com dados não baixados, sem movimento, pragas, caixa com estrago, placa ou fios danificados, ou aparelho mexido/desaparecido.</p><div class="cartao rolagem" style="padding:0"><table><tr><th>Data</th><th>Colônia</th><th>Monitor</th><th>Problemas</th><th>Observações</th><th>Mídias</th></tr>';
+  if(!lista.length) h+='<tr><td colspan="6" class="vazio">Nenhum problema registrado.</td></tr>';
+  lista.forEach(function(x){ var nm=x.v.midias.filter(function(m){return m.colonia===x.r.colonia;}).length;
+    h+='<tr class="clic" data-v="'+esc(x.v.id)+'"><td>'+dt(x.v.inicio)+'</td><td><b>'+x.r.colonia+'</b></td><td>'+esc(x.v.monitor)+'</td><td>'+x.r.problemas.map(function(p){ return '<span class="etq r">'+NOMES_PROB[p]+'</span>'; }).join('')+(x.r.praga_qual?' <span class="suave">('+esc(x.r.praga_qual)+')</span>':'')+'</td><td>'+esc(x.r.observacoes)+'</td><td>'+(nm||'')+'</td></tr>'; });
+  h+='</table></div>';
+  $('conteudo').innerHTML=h;
+  document.querySelectorAll('tr[data-v]').forEach(function(tr){ tr.onclick=function(){ abrirVisita(tr.dataset.v); }; });
+}
+
+iniciar();
+</script>
+</body>
+</html>

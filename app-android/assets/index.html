@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Monitor Meliponas</title>
+<script src="config.js"></script>
+<style>
+:root{
+  --madeira:#3B2414; --madeira2:#5A3A22; --mel:#F2B233; --mel-claro:#FCEFC9;
+  --folha:#2F6B3A; --folha-claro:#E2F0E3; --alerta:#B3261E; --alerta-claro:#FBE3E1;
+  --papel:#FFFFFF; --fundo:#F3F0EB; --texto:#24180F; --suave:#6B5D52; --linha:#DDD4CA;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--fundo);color:var(--texto);
+  font-family:Roboto,"Noto Sans",system-ui,sans-serif;font-size:17px;line-height:1.4}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+input,textarea,select{font:inherit;color:var(--texto);width:100%;padding:12px;border:2px solid var(--linha);
+  border-radius:10px;background:#fff}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--mel)}
+header{background:var(--madeira);color:#fff;padding:14px 18px 16px}
+header .quem{font-size:22px;font-weight:700}
+header .quando{color:#E9D8C4;font-size:15px}
+main{padding:14px 14px 96px;max-width:640px;margin:0 auto}
+h2{font-size:21px;margin:18px 4px 10px}
+h3{font-size:18px;margin:18px 0 8px}
+p{margin:0 0 10px}
+.cartao{background:var(--papel);border-radius:14px;padding:16px;margin-bottom:12px;border:1px solid var(--linha)}
+.botao{display:block;width:100%;padding:16px;border-radius:12px;font-weight:700;font-size:18px;text-align:center;
+  background:var(--mel);color:var(--madeira);margin-top:10px}
+.botao.verde{background:var(--folha);color:#fff}
+.botao.vermelho{background:var(--alerta);color:#fff}
+.botao.claro{background:#fff;border:2px solid var(--linha);color:var(--texto)}
+.botao:active{transform:scale(.98)}
+.suave{color:var(--suave);font-size:15px}
+.aviso{background:var(--alerta-claro);border-left:6px solid var(--alerta);padding:12px 14px;border-radius:8px;margin:10px 0}
+.dica{background:var(--mel-claro);border-left:6px solid var(--mel);padding:12px 14px;border-radius:8px;margin:10px 0}
+.ok{background:var(--folha-claro);border-left:6px solid var(--folha);padding:12px 14px;border-radius:8px;margin:10px 0}
+
+/* favos das colônias */
+.favos{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:8px 0 4px}
+.favo{aspect-ratio:1/1.08;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+  background:#E6DDD2;display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:800;font-size:22px;color:var(--suave)}
+.favo small{font-size:11px;font-weight:600}
+.favo.feito{background:var(--folha);color:#fff}
+.favo.problema{background:var(--alerta);color:#fff}
+.legenda{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;color:var(--suave);margin:6px 2px}
+.legenda i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.barra{height:12px;background:#E6DDD2;border-radius:6px;overflow:hidden;margin:8px 0}
+.barra span{display:block;height:100%;background:var(--folha);transition:width .3s}
+
+/* formulário da colônia */
+.campo{margin:16px 0}
+.campo > label{display:block;font-weight:700;margin-bottom:8px}
+.opcoes{display:flex;gap:8px;flex-wrap:wrap}
+.opcoes button{flex:1 1 30%;min-height:52px;padding:10px 6px;border-radius:10px;border:2px solid var(--linha);background:#fff;font-weight:600;font-size:16px}
+.opcoes button.sel{background:var(--folha);border-color:var(--folha);color:#fff}
+.opcoes button.sel.ruim{background:var(--alerta);border-color:var(--alerta)}
+.opcoes button.sel.medio{background:var(--mel);border-color:var(--mel);color:var(--madeira)}
+.topo-form{position:sticky;top:0;background:var(--madeira);color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;z-index:5}
+.topo-form button{color:#fff;font-size:26px;width:44px;height:44px}
+.topo-form .t{font-size:20px;font-weight:700;flex:1}
+.tela-cheia{position:fixed;inset:0;background:var(--fundo);overflow-y:auto;z-index:20;display:none}
+.tela-cheia.aberta{display:block}
+.tela-cheia .conteudo{padding:8px 14px 40px;max-width:640px;margin:0 auto}
+.info-col{font-size:14px;color:var(--suave);margin-top:4px}
+
+/* listas */
+.item{display:flex;align-items:center;gap:12px;padding:14px 4px;border-bottom:1px solid var(--linha)}
+.item:last-child{border-bottom:0}
+.item .bola{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;flex:none}
+.item .meio{flex:1}
+.etq{display:inline-block;font-size:13px;font-weight:700;padding:3px 8px;border-radius:20px;margin-right:4px}
+.etq.v{background:var(--folha-claro);color:var(--folha)}
+.etq.r{background:var(--alerta-claro);color:var(--alerta)}
+.etq.m{background:var(--mel-claro);color:#7A5208}
+ol.passos{padding-left:24px;margin:6px 0}
+ol.passos li{margin-bottom:8px}
+ul.sub{padding-left:20px;margin:6px 0}
+details{background:#fff;border:1px solid var(--linha);border-radius:12px;margin-bottom:10px}
+summary{padding:16px;font-weight:700;font-size:18px;list-style:none}
+summary::-webkit-details-marker{display:none}
+summary:after{content:"+";float:right;font-size:22px;color:var(--suave)}
+details[open] summary:after{content:"–"}
+details .det{padding:0 16px 14px}
+table{width:100%;border-collapse:collapse;font-size:15px}
+td,th{border-bottom:1px solid var(--linha);padding:8px 6px;text-align:left;vertical-align:top}
+th{color:var(--suave);font-weight:600}
+
+/* navegação */
+nav{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid var(--linha);display:flex;z-index:10}
+nav button{flex:1;padding:8px 0 10px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:13px;font-weight:600;color:var(--suave)}
+nav button svg{width:26px;height:26px}
+nav button.ativo{color:var(--madeira)}
+nav button.ativo svg{color:var(--mel);filter:drop-shadow(0 0 0 var(--madeira))}
+.oculto{display:none!important}
+.linha2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--madeira);color:#fff;padding:12px 18px;border-radius:24px;font-weight:600;opacity:0;transition:opacity .25s;z-index:50;pointer-events:none;max-width:90%;text-align:center}
+#toast.vis{opacity:1}
+
+.midias{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.midia{position:relative;border-radius:10px;overflow:hidden;background:#E6DDD2;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;flex-direction:column;font-weight:700;font-size:14px;color:var(--madeira)}
+.midia img{width:100%;height:100%;object-fit:cover}
+.midia .x{position:absolute;top:4px;right:4px;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.6);color:#fff;font-size:18px;line-height:30px}
+.midia .env{position:absolute;bottom:4px;left:4px;background:var(--folha);color:#fff;font-size:11px;padding:2px 6px;border-radius:8px}
+.midia.audio{background:var(--mel-claro)}
+.midia.audio .play{font-size:30px}
+.botoes-midia{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.botoes-midia button{padding:12px 4px;border-radius:10px;border:2px solid var(--linha);background:#fff;font-weight:700;font-size:15px;min-height:64px}
+.botoes-midia button.gravando{background:var(--alerta);border-color:var(--alerta);color:#fff}
+header{display:flex;align-items:center;gap:10px}
+header .id{flex:1;min-width:0}
+.sinc{font-size:13px;color:#E9D8C4;margin-top:2px}
+.sinc b{color:var(--mel)}
+.logos{display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;margin:14px 0}
+.logos{gap:18px}.logos img{height:84px;max-width:52%;object-fit:contain}.logos .marca{display:flex;align-items:center;gap:6px}.logos .marca img{height:64px}.logos .marca b{color:#7A4A12;font-size:15px;line-height:1.05}
+.logos .txt{font-weight:800;color:var(--madeira);font-size:15px;border:2px solid var(--linha);border-radius:8px;padding:8px 10px;background:#fff}
+.aparelho{background:#fff;border:2px solid var(--linha);border-radius:12px;padding:12px;margin:10px 0}
+.aparelho .tit{display:flex;justify-content:space-between;align-items:center;font-weight:700}
+.aparelho .id{font-family:monospace;font-size:15px;color:var(--madeira)}
+.aparelho.ok{border-color:var(--folha);background:var(--folha-claro)}
+.aparelho.falha{border-color:var(--alerta);background:var(--alerta-claro)}
+.leituras{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.leituras div{background:#fff;border-radius:8px;padding:6px;text-align:center;border:1px solid var(--linha)}
+.leituras b{display:block;font-size:17px;color:var(--madeira)}
+.leituras span{font-size:11.5px;color:var(--suave)}
+.progresso{height:8px;background:#E6DDD2;border-radius:4px;overflow:hidden;margin-top:8px}
+.progresso span{display:block;height:100%;background:var(--mel);transition:width .3s}
+.achados button{display:flex;width:100%;justify-content:space-between;align-items:center;padding:12px;border:2px solid var(--linha);border-radius:10px;background:#fff;margin-top:8px;font-weight:700}
+</style>
+</head>
+<body>
+
+<!-- Escolha do monitor (primeiro uso) -->
+<div id="boasVindas" class="tela-cheia">
+  <div class="conteudo" style="padding-top:40px">
+    <h2 style="font-size:26px">Monitor Meliponas</h2><div class="logos"><img src="logos/ipe-fis.png" alt="IPÊ | FIS" onerror="this.outerHTML='<span class=txt>IPÊ | FIS</span>'"><span class="marca"><img src="logos/amazonia-bee.png" alt="Amazônia Bee" onerror="this.parentNode.outerHTML='<span class=txt>Amazônia Bee</span>'"><b>Amazônia<br>Bee</b></span></div>
+    <p>Aplicativo de registro das visitas semanais às 12 colônias do protótipo de meliponicultura — FIS | IPÊ e Amazônia Bee, Cametá do Ramos (AM).</p>
+    <h3>Quem vai usar este celular?</h3>
+    <button class="botao" onclick="escolherMonitor('Sr. Jatir')">Sr. Jatir</button>
+    <button class="botao" onclick="escolherMonitor('Dona Maria Diniz')">Dona Maria Diniz</button>
+    <p class="suave" style="margin-top:14px">Dá para trocar depois, em Ajustes.</p>
+  </div>
+</div>
+
+<header>
+  <div class="id"><div class="quem" id="hQuem">Monitor</div><div class="quando" id="hQuando"></div><div class="sinc" id="hSinc"></div></div>
+</header>
+
+<main>
+  <section id="aba-visita"></section>
+  <section id="aba-historico" class="oculto"></section>
+  <section id="aba-guia" class="oculto"></section>
+  <section id="aba-ajustes" class="oculto"></section>
+</main>
+
+<!-- Formulário de uma colônia -->
+<div id="formColonia" class="tela-cheia">
+  <div class="topo-form"><button onclick="fecharColonia()" aria-label="Voltar">‹</button><div class="t" id="fTitulo">Colônia</div></div>
+  <div class="conteudo" id="fConteudo"></div>
+</div>
+
+<!-- Busca de aparelhos -->
+<div id="telaBusca" class="tela-cheia" style="z-index:30">
+  <div class="topo-form"><button onclick="fecharBusca()" aria-label="Voltar">‹</button><div class="t" id="bTitulo">Aparelhos</div></div>
+  <div class="conteudo" id="bConteudo"></div>
+</div>
+
+<!-- Resumo / detalhe de visita -->
+<div id="telaResumo" class="tela-cheia">
+  <div class="topo-form"><button onclick="fecharResumo()" aria-label="Voltar">‹</button><div class="t" id="rTitulo">Resumo da visita</div></div>
+  <div class="conteudo" id="rConteudo"></div>
+</div>
+
+<nav>
+  <button data-aba="visita" class="ativo" onclick="irAba('visita')">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z"/></svg>Visita</button>
+  <button data-aba="historico" onclick="irAba('historico')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Histórico</button>
+  <button data-aba="guia" onclick="irAba('guia')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h6"/></svg>Guia</button>
+  <button data-aba="ajustes" onclick="irAba('ajustes')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Ajustes</button>
+</nav>
+<div id="toast"></div>
+
+<script>
+/* ---------- dados ---------- */
+var CHAVE = 'meliponas_v1';
+var LOGOS_HTML='<div class="logos"><img src="logos/ipe-fis.png" alt="IPÊ | FIS" onerror="this.outerHTML=\'<span class=txt>IPÊ | FIS</span>\'"><span class="marca"><img src="logos/amazonia-bee.png" alt="Amazônia Bee"><b>Amazônia<br>Bee</b></span></div>';
+var DIAS = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
+var CAMPOS = [
+  {id:'dados',  rot:'Os dados foram baixados para o celular?', ops:['Sim','Não'], ruins:['Não']},
+  {id:'mov',    rot:'Movimento de abelhas na entrada', ops:['Muito','Pouco','Nenhum'], medios:['Pouco'], ruins:['Nenhum']},
+  {id:'pragas', rot:'Tem formigas, forídeos, cupins ou outras pragas?', ops:['Não','Sim'], ruins:['Sim']},
+  {id:'caixa',  rot:'Estado da caixa', ops:['Bom','Úmida','Com estrago'], medios:['Úmida'], ruins:['Com estrago']},
+  {id:'placa',  rot:'Placa solar e fios', ops:['Bom','Sujo','Danificado'], medios:['Sujo'], ruins:['Danificado']},
+  {id:'aparelho',rot:'Aparelho', ops:['No lugar','Mexido','Sumiu'], ruins:['Mexido','Sumiu']},
+  {id:'manejo', rot:'Manejo feito nesta colônia desde a última visita', ops:['Nenhum','Colheita','Alimentação','Troca de melgueira','Divisão'], medios:['Colheita','Alimentação','Troca de melgueira','Divisão']}
+];
+function semBluetooth(){ return !!(window.MM_WEB && !window.MM_WEB_BLE); }
+var NORMAL = {dados:'Sim',mov:'Muito',pragas:'Não',caixa:'Bom',placa:'Bom',aparelho:'No lugar',manejo:'Nenhum'};
+var O_QUE_FAZER = {
+  dados:'Chegue mais perto do aparelho e tente de novo. Se continuar sem passar, avise hoje no grupo do projeto.',
+  mov:'Colônia sem movimento: tire uma foto e avise hoje.',
+  pragas:'Tire uma foto das pragas e avise hoje.',
+  caixa:'Caixa com estrago ou mofo: tire uma foto e avise hoje.',
+  placa:'Placa quebrada ou fio cortado: tire foto, não mexa e avise hoje.',
+  aparelho:'Aparelho mexido ou desaparecido: tire foto do local e avise hoje a equipe e a Amazônia Bee.'
+};
+
+function novoEstado(){
+  var cols=[]; for(var i=1;i<=12;i++) cols.push({n:i,especie:'',ambiente:'',melgueira:'',aparelho:'',local:''});
+  return {monitor:'',agenda:{dia:'',hora:''},colonias:cols,visitas:[],atual:null};
+}
+function uuid(){ return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){var r=Math.random()*16|0;return (c=='x'?r:(r&3|8)).toString(16);}); }
+function completarEstado(){
+  if(!E.dispositivo) E.dispositivo=uuid();
+  var C=window.CONFIG||{};
+  if(!E.servidor) E.servidor={url:C.url||'',chave:C.chave||'',codigo:C.codigo||''};
+  if(!E.servidor.url && C.url){ E.servidor.url=C.url; E.servidor.chave=C.chave; E.servidor.codigo=C.codigo; }
+  if(E.midiasSoWifi===undefined) E.midiasSoWifi=true;
+  if(!E.sinc) E.sinc={ultima:null,erro:null};
+  if(!E.aparelhos) E.aparelhos={};
+}
+var E;
+try{ E = JSON.parse(localStorage.getItem(CHAVE)) || novoEstado(); }catch(e){ E = novoEstado(); }
+completarEstado();
+function salvar(){ try{ localStorage.setItem(CHAVE, JSON.stringify(E)); }catch(e){ toast('Não foi possível salvar: memória cheia'); } }
+
+/* ---------- utilidades ---------- */
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+function dois(n){ return (n<10?'0':'')+n; }
+function dataBR(iso){ var d=new Date(iso); return dois(d.getDate())+'/'+dois(d.getMonth()+1)+'/'+d.getFullYear(); }
+function horaBR(iso){ var d=new Date(iso); return dois(d.getHours())+':'+dois(d.getMinutes()); }
+function toast(t){ var el=$('toast'); el.textContent=t; el.classList.add('vis'); clearTimeout(el._t); el._t=setTimeout(function(){el.classList.remove('vis');},2200); }
+function visitaAtual(){ if(!E.atual) return null; for(var i=0;i<E.visitas.length;i++) if(E.visitas[i].id===E.atual) return E.visitas[i]; return null; }
+function acharVisita(id){ for(var i=0;i<E.visitas.length;i++) if(E.visitas[i].id===id) return E.visitas[i]; return null; }
+function colInfo(n){ var c=E.colonias[n-1]; var p=[]; if(c.especie)p.push(c.especie); if(c.ambiente)p.push(c.ambiente); if(c.melgueira)p.push('melgueira '+c.melgueira.toLowerCase()); if(c.aparelho)p.push('aparelho '+c.aparelho); return p.join(' · '); }
+function camposUso(){ return semBluetooth()?CAMPOS.filter(function(c){ return c.id!=='dados'; }):CAMPOS; }
+function problemas(r){
+  var lista=[]; if(!r) return lista;
+  camposUso().forEach(function(c){ if(c.ruins && c.ruins.indexOf(r[c.id])>=0) lista.push(c.id); });
+  return lista;
+}
+function completo(r){ if(!r) return false; var cs=camposUso(); for(var i=0;i<cs.length;i++) if(!r[cs[i].id]) return false; return true; }
+function compartilhar(texto,titulo){
+  if(window.Android && Android.compartilhar){ Android.compartilhar(texto,titulo||'Monitor Meliponas'); }
+  else if(navigator.share){ navigator.share({title:titulo,text:texto}); }
+  else { prompt('Copie o texto:',texto); }
+}
+
+/* ---------- cabeçalho e abas ---------- */
+function cabecalho(){
+  $('hQuem').textContent = E.monitor || 'Monitor';
+  var d=new Date();
+  $('hQuando').textContent = DIAS[d.getDay()]+', '+dataBR(d.toISOString());
+  mostrarSinc();
+}
+var abaAtual='visita';
+function irAba(a){
+  abaAtual=a;
+  ['visita','historico','guia','ajustes'].forEach(function(x){ $('aba-'+x).classList.toggle('oculto',x!==a); });
+  var bs=document.querySelectorAll('nav button'); for(var i=0;i<bs.length;i++) bs[i].classList.toggle('ativo', bs[i].getAttribute('data-aba')===a);
+  ({visita:telaVisita,historico:telaHistorico,guia:telaGuia,ajustes:telaAjustes})[a]();
+  window.scrollTo(0,0);
+}
+
+/* ---------- aba visita ---------- */
+function ultimaVisitaFinalizada(){
+  var f=E.visitas.filter(function(v){return v.fim;}); return f.length? f[f.length-1] : null;
+}
+function telaVisita(){
+  var v=visitaAtual(), h='';
+  if(!v){
+    var ult=ultimaVisitaFinalizada();
+    h+='<div class="cartao"><h2 style="margin-top:0">Visita da semana</h2>';
+    if(E.agenda.dia) h+='<p>Seu dia de visita: <b>'+esc(E.agenda.dia)+(E.agenda.hora?', '+esc(E.agenda.hora):'')+'</b></p>';
+    else h+='<p class="suave">Combine o dia e o horário da visita e anote em Ajustes.</p>';
+    if(ult){
+      var dias=Math.floor((Date.now()-new Date(ult.inicio).getTime())/86400000);
+      h+='<p>Última visita: <b>'+dataBR(ult.inicio)+'</b> ('+(dias===0?'hoje':dias===1?'ontem':'há '+dias+' dias')+')</p>';
+      if(dias>7) h+='<div class="aviso">Já passou mais de uma semana desde a última visita.</div>';
+    }
+    h+='<button class="botao verde" onclick="comecarVisita()">Começar visita</button></div>';
+    h+='<div class="dica"><b>Antes de sair:</b> carregue o celular, ligue o Bluetooth e leve um pano limpo para a placa solar.</div>';
+    var semVinc=E.colonias.filter(function(c){return !c.aparelho;}).length;
+    if(semVinc) h+='<div class="cartao"><b>'+semVinc+' colônia(s)</b> sem aparelho de medição vinculado. Vincule em Ajustes &gt; Identificação das colônias ou na própria visita.</div>';
+  } else {
+    var feitas=0, comProb=0;
+    for(var n=1;n<=12;n++){ var r=v.col[n]; if(completo(r)){feitas++; if(problemas(r).length)comProb++;} }
+    h+='<div class="cartao"><h2 style="margin-top:0">Visita em andamento</h2>';
+    h+='<p class="suave">Começou '+dataBR(v.inicio)+' às '+horaBR(v.inicio)+'</p>';
+    h+='<div class="barra"><span style="width:'+(feitas/12*100)+'%"></span></div>';
+    h+='<p><b>'+feitas+' de 12</b> colônias registradas'+(comProb?' · <span style="color:var(--alerta);font-weight:700">'+comProb+' com problema</span>':'')+'</p>';
+    h+='<p class="suave">Toque na colônia para registrar. Siga sempre a mesma ordem.</p>';
+    h+='<div class="favos">';
+    for(n=1;n<=12;n++){
+      var r2=v.col[n], cls='favo', sub='';
+      if(completo(r2)){ cls+= problemas(r2).length?' problema':' feito'; sub=problemas(r2).length?'avisar':'ok'; }
+      else if(r2){ sub='incompleta'; }
+      h+='<button class="'+cls+'" onclick="abrirColonia('+n+')">'+n+(sub?'<small>'+sub+'</small>':'')+'</button>';
+    }
+    h+='</div><div class="legenda"><span><i style="background:#E6DDD2"></i>falta</span><span><i style="background:var(--folha)"></i>tudo certo</span><span><i style="background:var(--alerta)"></i>avisar a equipe</span></div>';
+    h+='<button class="botao" onclick="terminarVisita()">Terminar visita</button>';
+    h+='<button class="botao claro" onclick="cancelarVisita()">Descartar esta visita</button></div>';
+  }
+  $('aba-visita').innerHTML=h;
+}
+function comecarVisita(){
+  var v={id:'v'+Date.now(), monitor:E.monitor, inicio:new Date().toISOString(), fim:null, col:{}, enviadoSistema:false};
+  E.visitas.push(v); E.atual=v.id; salvar(); telaVisita();
+}
+function cancelarVisita(){
+  if(!confirm('Descartar esta visita? Tudo o que foi anotado nela, inclusive fotos e áudios, será apagado.')) return;
+  var va=visitaAtual(); for(var n=1;n<=12;n++){ var rr=va.col[n]; if(rr&&rr.midias&&temPonte('apagarMidia')) rr.midias.forEach(function(m){ Android.apagarMidia(m.id); }); }
+  E.visitas=E.visitas.filter(function(x){return x.id!==E.atual;}); E.atual=null; salvar(); telaVisita();
+}
+function terminarVisita(){
+  var v=visitaAtual(), falta=[];
+  for(var n=1;n<=12;n++) if(!completo(v.col[n])) falta.push(n);
+  if(falta.length && !confirm('Faltam as colônias '+falta.join(', ')+'. Terminar mesmo assim?')) return;
+  if(gravando) pararAudio(false);
+  var mv=medicoesVisita(v); v.enviadoSistema = mv.vinc>0 && mv.ok===mv.vinc;
+  v.fim=new Date().toISOString(); E.atual=null; salvar();
+  telaVisita(); abrirResumo(v.id, true);
+  sincronizar(false);
+}
+
+/* ---------- formulário da colônia ---------- */
+var colAberta=null;
+function abrirColonia(n){
+  if(gravando) pararAudio(false);
+  colAberta=n; var v=visitaAtual(); if(!v.col[n]) v.col[n]={};
+  $('fTitulo').textContent='Colônia '+n;
+  desenharColonia(); $('formColonia').classList.add('aberta'); $('formColonia').scrollTop=0;
+}
+function desenharColonia(){
+  var v=visitaAtual(), n=colAberta, r=v.col[n], h='';
+  var info=colInfo(n); if(info) h+='<div class="info-col">'+esc(info)+'</div>';
+  h+=cartaoAparelho(n,r);
+  h+='<button class="botao verde" onclick="tudoNormal()">Tudo normal nesta colônia</button>';
+  h+='<p class="suave" style="margin-top:8px">Ou marque item por item:</p>';
+  camposUso().forEach(function(c){
+    h+='<div class="campo"><label>'+c.rot+'</label><div class="opcoes">';
+    c.ops.forEach(function(o){
+      var sel=r[c.id]===o, cls=sel?'sel':''; if(sel && c.ruins && c.ruins.indexOf(o)>=0) cls+=' ruim'; else if(sel && c.medios && c.medios.indexOf(o)>=0) cls+=' medio';
+      h+='<button class="'+cls+'" onclick="marcar(\''+c.id+'\',\''+o+'\')">'+o+'</button>';
+    });
+    h+='</div>';
+    if(c.id==='pragas' && r.pragas==='Sim') h+='<input style="margin-top:8px" placeholder="Qual praga?" value="'+esc(r.pragaQual||'')+'" oninput="texto(\'pragaQual\',this.value)">';
+    if(c.id==='placa' && r.placa==='Sujo') h+='<div class="dica">Limpe a placa com pano seco ou levemente úmido.</div>';
+    if(c.ruins && c.ruins.indexOf(r[c.id])>=0 && O_QUE_FAZER[c.id]) h+='<div class="aviso">'+O_QUE_FAZER[c.id]+'</div>';
+    h+='</div>';
+  });
+  h+='<div class="campo"><label>Fotos e áudios</label><div class="botoes-midia">'+
+     '<button onclick="novaFoto(false)">📷<br>Tirar foto</button>'+
+     '<button onclick="novaFoto(true)">🖼<br>Da galeria</button>'+
+     '<button id="btAudio" class="'+(gravando?'gravando':'')+'" onclick="alternarAudio()">'+(gravando?'■<br>Parar <span id="tAudio">0:00</span>':'🎙<br>Gravar áudio')+'</button></div>';
+  var ms=r.midias||[];
+  if(ms.length){ h+='<div class="midias">'; ms.forEach(function(m,i){
+      if(m.tipo==='foto'){ var src=(window.Android&&Android.miniatura)?Android.miniatura(m.id):''; h+='<div class="midia">'+(src?'<img src="'+src+'">':'Foto')+'<button class="x" onclick="removerMidia('+i+')">×</button>'+(m.enviado?'<span class="env">enviada</span>':'')+'</div>'; }
+      else h+='<div class="midia audio" onclick="tocar(\''+m.id+'\')"><span class="play">▶</span>Áudio '+fmtDur(m.duracao)+'<button class="x" onclick="event.stopPropagation();removerMidia('+i+')">×</button>'+(m.enviado?'<span class="env">enviado</span>':'')+'</div>';
+    }); h+='</div>'; }
+  h+='</div>';
+  h+='<div class="campo"><label>Observações</label><textarea rows="3" placeholder="O que mais você viu?" oninput="texto(\'obs\',this.value)">'+esc(r.obs||'')+'</textarea></div>';
+  h+='<button class="botao" onclick="proxima()">'+(colAberta<12?'Salvar e ir para a colônia '+(colAberta+1):'Salvar e voltar')+'</button>';
+  $('fConteudo').innerHTML=h;
+}
+function marcar(campo,valor){ var r=visitaAtual().col[colAberta]; r[campo]=valor; r.hora=new Date().toISOString(); salvar(); var y=$('formColonia').scrollTop; desenharColonia(); $('formColonia').scrollTop=y; }
+function texto(campo,valor){ visitaAtual().col[colAberta][campo]=valor; salvar(); }
+function tudoNormal(){ var r=visitaAtual().col[colAberta]; for(var k in NORMAL) r[k]=NORMAL[k];
+  if(semBluetooth()) delete r.dados;
+  else if(E.colonias[colAberta-1].aparelho && !(r.download&&r.download.ok)){ r.dados='Não'; toast('Atenção: os dados do aparelho não foram baixados'); } r.hora=new Date().toISOString(); salvar(); toast('Colônia '+colAberta+': tudo normal'); proxima(); }
+function proxima(){
+  var r=visitaAtual().col[colAberta];
+  if(!completo(r)){ toast('Faltam itens. Você pode voltar depois.'); }
+  if(colAberta<12){ abrirColonia(colAberta+1); } else { fecharColonia(); }
+}
+function fecharColonia(){ if(gravando) pararAudio(false); if(temPonte('pararReproducao')) Android.pararReproducao(); $('formColonia').classList.remove('aberta'); colAberta=null; telaVisita(); }
+
+
+/* ---------- fotos e áudios ---------- */
+var gravando=false, tGrav=null, inicioGrav=0;
+function temPonte(f){ return window.Android && typeof Android[f]==='function'; }
+function fmtDur(s){ s=s||0; return Math.floor(s/60)+':'+dois(s%60); }
+function novaFoto(galeria){
+  if(!temPonte('tirarFoto')){ toast('Fotos só funcionam no aplicativo instalado'); return; }
+  var chave=E.atual+'|'+colAberta;
+  galeria? Android.escolherFoto(chave) : Android.tirarFoto(chave);
+}
+window.midiaPronta=function(chave,info){
+  var p=String(chave).split('|'), v=acharVisita(p[0]); if(!v) return;
+  var n=+p[1]; if(!v.col[n]) v.col[n]={};
+  var r=v.col[n]; r.midias=r.midias||[];
+  info.criado=new Date().toISOString(); info.enviado=false; r.midias.push(info); salvar();
+  toast(info.tipo==='foto'?'Foto guardada':'Áudio guardado');
+  if(colAberta===n) redesenharMantendoRolagem();
+};
+window.midiaErro=function(chave,msg){ if(msg) toast(msg); pararIndicadorAudio(); };
+function alternarAudio(){
+  if(!temPonte('iniciarAudio')){ toast('Áudio só funciona no aplicativo instalado'); return; }
+  if(!gravando) Android.iniciarAudio(E.atual+'|'+colAberta); else pararAudio(false);
+}
+window.audioIniciado=function(chave){
+  gravando=true; inicioGrav=Date.now(); redesenharMantendoRolagem();
+  tGrav=setInterval(function(){ var el=$('tAudio'); if(el) el.textContent=fmtDur(Math.floor((Date.now()-inicioGrav)/1000)); },500);
+};
+function pararIndicadorAudio(){ gravando=false; clearInterval(tGrav); }
+window.pararAudio=function(limite){
+  var chave=E.atual+'|'+colAberta;
+  pararIndicadorAudio();
+  var res=temPonte('finalizarAudio')?Android.finalizarAudio():'';
+  if(res==='PENDENTE') return;
+  if(res){ midiaPronta(chave, JSON.parse(res)); if(limite) toast('Limite de 3 minutos atingido'); }
+  else { toast('Áudio muito curto, não foi guardado'); redesenharMantendoRolagem(); }
+};
+function tocar(id){ if(temPonte('tocarAudio')){ Android.tocarAudio(id); toast('Tocando o áudio'); } }
+function removerMidia(i){
+  var r=visitaAtual().col[colAberta], m=r.midias[i];
+  if(m.enviado){ toast('Já foi enviado ao servidor e não pode ser apagado aqui'); return; }
+  if(!confirm('Apagar '+(m.tipo==='foto'?'esta foto':'este áudio')+'?')) return;
+  if(temPonte('apagarMidia')) Android.apagarMidia(m.id);
+  r.midias.splice(i,1); salvar(); redesenharMantendoRolagem();
+}
+function redesenharMantendoRolagem(){ if(colAberta==null) return; var y=$('formColonia').scrollTop; desenharColonia(); $('formColonia').scrollTop=y; }
+function contarMidias(v){ var f=0,a=0; for(var n=1;n<=12;n++){ var r=v.col[n]; if(r&&r.midias) r.midias.forEach(function(m){ m.tipo==='foto'?f++:a++; }); } return {fotos:f,audios:a}; }
+
+/* ---------- sincronização com o servidor ---------- */
+var sincronizando=false;
+function rede(){ if(temPonte('rede')) return Android.rede(); return navigator.onLine?'wifi':'nenhuma'; }
+function servidorPronto(){ return E.servidor && E.servidor.url && E.servidor.chave && E.servidor.codigo; }
+function urlBase(){ return E.servidor.url.replace(/\/+$/,''); }
+function cab(extra){ var h={'apikey':E.servidor.chave,'Authorization':'Bearer '+E.servidor.chave}; for(var k in extra) h[k]=extra[k]; return h; }
+function visitaPendente(v){ return v.fim && (!v.sincEm || (v.alterado||0) > v.sincEm); }
+function midiasPendentes(){
+  var lista=[]; E.visitas.forEach(function(v){ if(!v.fim) return; for(var n=1;n<=12;n++){ var r=v.col[n]; if(r&&r.midias) r.midias.forEach(function(m){ if(!m.enviado) lista.push({v:v,n:n,m:m}); }); } });
+  return lista;
+}
+function contarPendencias(){ return {visitas:E.visitas.filter(visitaPendente).length, midias:midiasPendentes().length, lotes:lotesPendentes().length}; }
+function mostrarSinc(){
+  var el=$('hSinc'); if(!el) return;
+  if(!servidorPronto()){ el.innerHTML='Sincronização não configurada'; return; }
+  if(sincronizando){ el.innerHTML='<b>Sincronizando…</b>'; return; }
+  var p=contarPendencias();
+  if(!p.visitas && !p.midias && !p.lotes) el.innerHTML='Tudo sincronizado'+(E.sinc.ultima?' · '+dataBR(E.sinc.ultima)+' '+horaBR(E.sinc.ultima):'');
+  else el.innerHTML='<b>A enviar: '+[p.visitas?p.visitas+' visita(s)':'',p.midias?p.midias+' foto(s)/áudio(s)':'',p.lotes?'medições de '+p.lotes+' download(s)':''].filter(Boolean).join(', ')+'</b>';
+}
+function linhaRegistro(n,r){
+  var d=r.download&&r.download.ok?r.download:null;
+  return {leitura:d?{aparelho:d.id,agora:d.agora,n:d.n,primeiro:d.primeiro,ultimo:d.ultimo,quando:d.quando}:null,colonia:n,hora:r.hora||null,dados:r.dados||null,mov:r.mov||null,pragas:r.pragas||null,pragaQual:r.pragaQual||null,caixa:r.caixa||null,
+    placa:r.placa||null,aparelho:r.aparelho||null,manejo:r.manejo||null,obs:r.obs||null,problemas:problemas(r)};
+}
+function rpc(payload){
+  return fetch(urlBase()+'/rest/v1/rpc/sincronizar',{method:'POST',headers:cab({'Content-Type':'application/json'}),body:JSON.stringify({p:payload})})
+    .then(function(resp){ return resp.text().then(function(t){ if(!resp.ok){ var m=t; try{ m=JSON.parse(t).message||t; }catch(e){} throw new Error(m); } return t; }); });
+}
+function b64ParaBytes(b64){ var bin=atob(b64), u=new Uint8Array(bin.length); for(var i=0;i<bin.length;i++) u[i]=bin.charCodeAt(i); return u; }
+function caminhoMidia(v,m){ return 'visitas/'+v.id+'/'+m.id+(m.tipo==='audio'?'.m4a':'.jpg'); }
+function enviarArquivo(item){
+  return Promise.resolve(temPonte('lerMidiaBase64')?Android.lerMidiaBase64(item.m.id,item.m.tipo):'').then(function(b64){
+  if(!b64) throw new Error('arquivo não encontrado no celular');
+  var tipo=item.m.tipo==='audio'?'audio/mp4':'image/jpeg';
+  return fetch(urlBase()+'/storage/v1/object/midias/'+caminhoMidia(item.v,item.m),{method:'POST',headers:cab({'Content-Type':tipo}),body:b64ParaBytes(b64)})
+    .then(function(resp){ return resp.text().then(function(t){
+      if(resp.ok || /Duplicate|already exists/i.test(t) || resp.status===409) return true;
+      throw new Error('envio de arquivo: '+resp.status+' '+t.slice(0,120)); }); });
+  });
+}
+function sincronizar(manual){
+  if(sincronizando) return Promise.resolve();
+  if(!servidorPronto()){ if(manual) toast('Configure a sincronização em Ajustes'); return Promise.resolve(); }
+  var r0=rede();
+  if(r0==='nenhuma'){ if(manual) toast('Sem internet agora. Os dados ficam guardados no celular.'); return Promise.resolve(); }
+  var pend=E.visitas.filter(visitaPendente);
+  var podeMidia = r0==='wifi' || !E.midiasSoWifi;
+  var midias=podeMidia?midiasPendentes():[];
+  var lotes=podeMidia?lotesPendentes():[];
+  if(!pend.length && !midias.length && !lotes.length){ if(manual){ toast(midiasPendentes().length||lotesPendentes().length?'Fotos, áudios e medições aguardam uma rede Wi-Fi':'Tudo já está sincronizado'); } return Promise.resolve(); }
+  sincronizando=true; mostrarSinc();
+  var marca=Date.now();
+  var payload={codigo:E.servidor.codigo,dispositivo:E.dispositivo,monitor:E.monitor,versao:temPonte('versao')?Android.versao():'web',
+    colonias:E.colonias,
+    visitas:pend.map(function(v){ var regs=[]; for(var n=1;n<=12;n++) if(v.col[n] && v.col[n].mov!==undefined || (v.col[n]&&v.col[n].dados)) regs.push(linhaRegistro(n,v.col[n]));
+      return {id:v.id,monitor:v.monitor,inicio:v.inicio,fim:v.fim,enviadoSistema:!!v.enviadoSistema,registros:regs}; }),
+    midias:[]};
+  var enviados=[], erroMidia=null;
+  return rpc(payload).then(function(){
+    pend.forEach(function(v){ v.sincEm=marca; }); salvar();
+    // arquivos, um por vez
+    return midias.reduce(function(pr,item){ return pr.then(function(){ return enviarArquivo(item).then(function(){ enviados.push(item); }).catch(function(e){ erroMidia=e; }); }); }, Promise.resolve());
+  }).then(function(){
+    if(!enviados.length) return;
+    return rpc({codigo:E.servidor.codigo,dispositivo:E.dispositivo,monitor:E.monitor,visitas:[],colonias:[],
+      midias:enviados.map(function(it){ return {id:it.m.id,visita:it.v.id,colonia:it.n,tipo:it.m.tipo,caminho:caminhoMidia(it.v,it.m),duracao:it.m.duracao||null,tamanho:it.m.tamanho||null,criado:it.m.criado||null}; })})
+      .then(function(){ enviados.forEach(function(it){ it.m.enviado=true; }); salvar(); });
+  }).then(function(){
+    // medições dos aparelhos, um download por vez
+    return lotes.reduce(function(pr,nome){ return pr.then(function(){ return enviarLote(nome).catch(function(e){ erroMidia=e; }); }); }, Promise.resolve());
+  }).then(function(){
+    E.sinc.ultima=new Date().toISOString(); E.sinc.erro=erroMidia?String(erroMidia.message):null; salvar();
+    var resto=midiasPendentes().length;
+    if(manual || pend.length) toast(erroMidia?'Parte das fotos/áudios não foi enviada. Tente de novo.':(resto&&!podeMidia?'Visitas enviadas. Fotos e áudios aguardam Wi-Fi.':'Dados enviados ao servidor'));
+  }).catch(function(e){
+    E.sinc.erro=String(e.message||e); salvar();
+    if(manual) toast('Não foi possível sincronizar: '+E.sinc.erro);
+  }).then(function(){ sincronizando=false; mostrarSinc(); if(abaAtual==='ajustes') telaAjustes(); if(abaAtual==='historico') telaHistorico();
+    if(resumoId){ var y=$('telaResumo').scrollTop; abrirResumo(resumoId); $('telaResumo').scrollTop=y; } });
+}
+function testarServidor(){
+  if(!servidorPronto()){ toast('Preencha os três campos'); return; }
+  fetch(urlBase()+'/rest/v1/rpc/testar_codigo',{method:'POST',headers:cab({'Content-Type':'application/json'}),body:JSON.stringify({codigo:E.servidor.codigo})})
+   .then(function(r){ return r.json().then(function(j){ if(!r.ok) throw new Error(j.message||r.status); return j; }); })
+   .then(function(ok){ alert(ok===true?'Conexão funcionando. O código do projeto está correto.':'O servidor respondeu, mas o código do projeto está errado.'); })
+   .catch(function(e){ alert('Não foi possível conectar: '+e.message); });
+}
+window.aoVoltarAoApp=function(){ cabecalho(); if(rede()==='wifi') sincronizar(false); };
+setInterval(function(){ if(!sincronizando && rede()==='wifi' && (contarPendencias().visitas||contarPendencias().midias)) sincronizar(false); }, 120000);
+
+/* ---------- aparelho de medição BeeMeter (Bluetooth) ---------- */
+var baixando=null, bleTexto='', blePct=0;
+function fmtNum(v,u,dec){ return v==null||isNaN(v)?'—':(+v).toFixed(dec)+u; }
+function leiturasHTML(a){
+  if(!a) return '';
+  var tc=a.tc||[];
+  return '<div class="leituras"><div><b>'+fmtNum(a.t,'°',1)+'</b><span>Ambiente</span></div><div><b>'+fmtNum(a.ur,'%',0)+'</b><span>Umidade</span></div><div><b>'+(a.lux==null?'—':Math.round(a.lux))+'</b><span>Luz (lux)</span></div>'+
+    '<div><b>'+fmtNum(tc[0],'°',1)+'</b><span>Fundo</span></div><div><b>'+fmtNum(tc[1],'°',1)+'</b><span>Divisão</span></div><div><b>'+fmtNum(tc[2],'°',1)+'</b><span>Melgueira</span></div>'+
+    '<div style="grid-column:span 3"><b>'+fmtNum(a.peso,' kg',3)+'</b><span>Peso da colmeia</span></div></div>';
+}
+function dataHora(seg){ var d=new Date(seg*1000).toISOString(); return dataBR(d)+' '+horaBR(d); }
+function cartaoAparelho(n,r){
+  var c=E.colonias[n-1], d=r.download||null, h='';
+  if(semBluetooth()) return '<div class="aparelho"><div class="tit"><span>Aparelho de medição</span><span class="id">'+esc(c.aparelho||'')+'</span></div><p class="suave" style="margin:6px 0 0">Neste navegador não há Bluetooth para o aparelho. As medições ficam guardadas no BeeMeter por 31 dias e são baixadas pelo celular Android ou pelo navegador Bluefy.</p></div>';
+  if(!c.aparelho) return '<div class="aparelho"><div class="tit">Aparelho de medição</div><p class="suave" style="margin:6px 0 0">Nenhum aparelho vinculado a esta colônia.</p><button class="botao claro" onclick="abrirBusca('+n+')">Procurar e vincular aparelho</button></div>';
+  h+='<div class="aparelho'+(d&&d.ok?' ok':(d&&d.erro?' falha':''))+'"><div class="tit"><span>Aparelho de medição</span><span class="id">'+esc(c.aparelho)+'</span></div>';
+  if(baixando===n){
+    h+='<p id="bleTxt" style="margin:8px 0 0">'+esc(bleTexto)+'</p><div class="progresso"><span id="blePct" style="width:'+blePct+'%"></span></div><button class="botao claro" onclick="cancelarDownload()">Cancelar</button>';
+  } else if(d&&d.ok){
+    h+='<p style="margin:8px 0 0">Baixado às '+horaBR(new Date(d.quando*1000).toISOString())+': <b>'+d.n+' registro(s) novo(s)</b>'+(d.mIni?' ('+dataHora(d.mIni)+' a '+dataHora(d.mFim)+')':'')+'.</p>'+leiturasHTML(d.agora)+
+       '<button class="botao claro" onclick="baixarAparelho('+n+')">Baixar de novo</button>';
+  } else {
+    if(d&&d.erro) h+='<p style="margin:8px 0 0;color:var(--alerta)">'+esc(d.erro)+'</p>';
+    h+='<button class="botao" onclick="baixarAparelho('+n+')">'+(d&&d.erro?'Tentar de novo':'Baixar dados do aparelho')+'</button>';
+  }
+  return h+'</div>';
+}
+function baixarAparelho(n){
+  if(!temPonte('bleBaixar')){ toast('O download funciona só no aplicativo instalado'); return; }
+  if(baixando){ toast('Aguarde o download em andamento'); return; }
+  var c=E.colonias[n-1], ap=E.aparelhos[c.aparelho]||{};
+  baixando=n; bleTexto='Preparando o Bluetooth…'; blePct=2; redesenharMantendoRolagem();
+  Android.bleBaixar('baixar|'+E.atual+'|'+n, c.aparelho, String(ap.ultimoSeq?ap.ultimoSeq+1:0), n);
+}
+function cancelarDownload(){ if(temPonte('bleCancelar')) Android.bleCancelar(); baixando=null; redesenharMantendoRolagem(); }
+window.bleProgresso=function(chave,txt,pct){
+  if(String(chave).indexOf('baixar|')!==0) return;
+  bleTexto=txt; blePct=pct; var t=$('bleTxt'), b=$('blePct'); if(t) t.textContent=txt; if(b) b.style.width=pct+'%';
+};
+window.bleErro=function(chave,msg){
+  if(String(chave).indexOf('baixar|')===0){
+    var p=chave.split('|'), v=acharVisita(p[1]), n=+p[2]; baixando=null;
+    if(v){ v.col[n]=v.col[n]||{}; v.col[n].download={ok:false,erro:msg}; salvar(); }
+    if(colAberta===n) redesenharMantendoRolagem(); else toast(msg);
+  } else {
+    buscando=false; buscaErro=msg; if($('telaBusca').classList.contains('aberta')) desenharBusca(); else toast(msg);
+  }
+};
+window.bleConcluido=function(chave,res){
+  var p=String(chave).split('|'), v=acharVisita(p[1]), n=+p[2]; baixando=null;
+  var ap=E.aparelhos[res.id]||{};
+  if(res.n>0) ap.ultimoSeq=res.ultimo;
+  else if(ap.ultimoSeq && res.proximo && ap.ultimoSeq>=res.proximo) ap.ultimoSeq=res.proximo-1;
+  ap.ultimoDownload=new Date().toISOString(); ap.fw=res.fw; ap.colonia=n; E.aparelhos[res.id]=ap;
+  if(v){ v.col[n]=v.col[n]||{}; var r=v.col[n]; res.ok=true; r.download=res; r.dados='Sim'; if(!r.hora) r.hora=new Date().toISOString(); }
+  salvar();
+  if(colAberta===n) redesenharMantendoRolagem();
+  toast('Colônia '+n+': '+res.n+' registro(s) baixado(s)');
+  if(!res.tara) setTimeout(function(){ toast('Aviso: a balança do aparelho está sem tara'); },2500);
+};
+function medicoesVisita(v){
+  var vinc=0, ok=0;
+  for(var n=1;n<=12;n++){ if(E.colonias[n-1].aparelho){ vinc++; var r=v.col[n]; if(r&&r.download&&r.download.ok) ok++; } }
+  return {vinc:vinc, ok:ok};
+}
+
+/* busca e vínculo */
+var buscaColonia=null, buscando=false, achados={}, buscaErro=null;
+function abrirBusca(n){
+  buscaColonia=n||null; achados={}; buscaErro=null;
+  $('bTitulo').textContent=n?'Vincular aparelho à colônia '+n:'Aparelhos por perto';
+  $('telaBusca').classList.add('aberta'); iniciarBusca();
+}
+function iniciarBusca(){
+  achados={}; buscaErro=null;
+  if(!temPonte('bleBuscar')){ buscaErro='A busca funciona só no aplicativo instalado.'; desenharBusca(); return; }
+  buscando=true; desenharBusca(); Android.bleBuscar('busca',8);
+}
+window.bleAchado=function(chave,o){ achados[o.id]=o; desenharBusca(); };
+window.bleBuscaFim=function(chave,lista){ buscando=false; (lista||[]).forEach(function(o){ achados[o.id]=o; }); desenharBusca(); };
+function sinal(r){ return r>-60?'muito perto':r>-75?'perto':r>-88?'longe':'muito longe'; }
+function colDoAparelho(id){ for(var i=0;i<12;i++) if(E.colonias[i].aparelho===id) return i+1; return 0; }
+function desenharBusca(){
+  var ids=Object.keys(achados).sort(function(a,b){ return achados[b].rssi-achados[a].rssi; }), h='';
+  if(buscaErro) h+='<div class="aviso">'+esc(buscaErro)+'</div>';
+  else h+='<p class="suave">'+(buscando?'Procurando aparelhos BeeMeter por perto…':(ids.length?'Toque no aparelho certo. O primeiro da lista é o mais perto.':'Nenhum aparelho encontrado. Chegue mais perto, confira se a tela do aparelho está acesa e procure de novo.'))+'</p>';
+  if(buscaColonia) h+='<div class="dica">Confira o nome que aparece na tela do aparelho (BM-…) antes de tocar.</div>';
+  h+='<div class="achados">';
+  ids.forEach(function(id){ var o=achados[id], usado=colDoAparelho(id);
+    h+='<button onclick="escolherAparelho(\''+id+'\')"><span>'+id+(usado?' <span class="suave" style="font-weight:400">· colônia '+usado+'</span>':'')+'</span><span class="suave">'+sinal(o.rssi)+'</span></button>'; });
+  h+='</div>';
+  if(!buscando) h+='<button class="botao" onclick="iniciarBusca()">Procurar de novo</button>';
+  $('bConteudo').innerHTML=h;
+}
+function escolherAparelho(id){
+  if(!buscaColonia){ var u=colDoAparelho(id); toast(id+(u?' está vinculado à colônia '+u:' não está vinculado')); return; }
+  var outra=colDoAparelho(id);
+  if(outra && outra!==buscaColonia){
+    if(!confirm(id+' já está vinculado à colônia '+outra+'. Passar para a colônia '+buscaColonia+'?')) return;
+    E.colonias[outra-1].aparelho='';
+  }
+  E.colonias[buscaColonia-1].aparelho=id; salvar(); toast('Colônia '+buscaColonia+' vinculada a '+id);
+  fecharBusca();
+}
+function fecharBusca(){
+  if(buscando && temPonte('bleCancelar')) Android.bleCancelar();
+  buscando=false; $('telaBusca').classList.remove('aberta');
+  if(colAberta) redesenharMantendoRolagem(); else if(abaAtual==='ajustes') telaAjustes();
+}
+
+/* lotes de medições guardados no celular */
+function lotesPendentes(){ try{ return temPonte('lotesPendentes')?JSON.parse(Android.lotesPendentes()):[]; }catch(e){ return []; } }
+function rpcFn(fn,payload){
+  return fetch(urlBase()+'/rest/v1/rpc/'+fn,{method:'POST',headers:cab({'Content-Type':'application/json'}),body:JSON.stringify({p:payload})})
+    .then(function(resp){ return resp.text().then(function(t){ if(!resp.ok){ var m=t; try{ m=JSON.parse(t).message||t; }catch(e){} throw new Error(m); } return t; }); });
+}
+function enviarLote(nome){
+  return Promise.resolve(Android.lerLote(nome)).then(function(txt){
+  if(!txt){ Android.apagarLote(nome); return; }
+  var lote=JSON.parse(txt), regs=lote.registros||[], partes=[];
+  for(var i=0;i<regs.length;i+=400) partes.push(regs.slice(i,i+400));
+  return partes.reduce(function(pr,parte){ return pr.then(function(){
+    return rpcFn('enviar_medicoes',{codigo:E.servidor.codigo,dispositivo:E.dispositivo,aparelho:lote.aparelho,colonia:lote.colonia,fw:lote.fw,registros:parte});
+  }); }, Promise.resolve()).then(function(){ Android.apagarLote(nome); });
+  });
+}
+
+/* ---------- relatório ---------- */
+function linhaCol(n,r){
+  if(!r || !completo(r)) return 'Col. '+n+': não registrada';
+  var t='Col. '+n+': dados '+r.dados+' | movimento '+r.mov+' | pragas '+r.pragas+(r.pragaQual?' ('+r.pragaQual+')':'')+' | caixa '+r.caixa+' | placa e fios '+r.placa+' | aparelho '+r.aparelho;
+  if(r.manejo && r.manejo!=='Nenhum') t+=' | manejo: '+r.manejo;
+  if(r.download&&r.download.ok&&r.download.agora){ var a=r.download.agora, tc=a.tc||[]; t+=' | peso '+fmtNum(a.peso,' kg',2)+' | ninho '+fmtNum(tc[0],'°C',1); }
+  if(r.obs) t+=' | obs: '+r.obs;
+  return t;
+}
+function nomeProb(id,r){
+  return {dados:'dados não baixados',mov:'sem movimento de abelhas',pragas:'pragas'+(r.pragaQual?' ('+r.pragaQual+')':''),caixa:'caixa com estrago',placa:'placa ou fios danificados',aparelho:'aparelho '+(r.aparelho||'').toLowerCase()}[id];
+}
+function textoRelatorio(v){
+  var feitas=0,baix=0,probs=[],manejos=[];
+  for(var n=1;n<=12;n++){ var r=v.col[n]; if(completo(r)){feitas++; if(r.dados==='Sim')baix++; var p=problemas(r); if(p.length) probs.push('Col. '+n+': '+p.map(function(x){return nomeProb(x,r);}).join(', ')); if(r.manejo&&r.manejo!=='Nenhum') manejos.push('Col. '+n+': '+r.manejo);} }
+  var t='VISITA SEMANAL — MELIPONICULTURA FIS\nMonitor: '+v.monitor+'\nData: '+dataBR(v.inicio)+', das '+horaBR(v.inicio)+(v.fim?' às '+horaBR(v.fim):'')+'\nColônias registradas: '+feitas+' de 12\nDados baixados: '+baix+' de 12\n';
+  var mvt=medicoesVisita(v); if(mvt.vinc) t+='Medições dos aparelhos: '+mvt.ok+' de '+mvt.vinc+'\n';
+  var cm=contarMidias(v); if(cm.fotos||cm.audios) t+='Fotos: '+cm.fotos+' · Áudios: '+cm.audios+' (enviados pelo aplicativo)\n';
+  t+= probs.length? '\nATENÇÃO — PROBLEMAS:\n'+probs.join('\n')+'\n' : '\nNenhum problema encontrado.\n';
+  if(manejos.length) t+='\nManejo feito:\n'+manejos.join('\n')+'\n';
+  t+='\nDetalhe por colônia:\n'; for(n=1;n<=12;n++) t+=linhaCol(n,v.col[n])+'\n';
+  return t;
+}
+function textoAviso(v){
+  var probs=[];
+  for(var n=1;n<=12;n++){ var r=v.col[n]; var p=problemas(r); if(p.length) probs.push('Colônia '+n+': '+p.map(function(x){return nomeProb(x,r);}).join(', ')+(r.obs?' — '+r.obs:'')); }
+  return 'AVISO DE PROBLEMA — Meliponicultura FIS\n'+v.monitor+', visita de '+dataBR(v.inicio)+'\n\n'+probs.join('\n')+'\n\nAs fotos e áudios seguem pela sincronização do aplicativo.';
+}
+
+/* ---------- resumo / detalhe ---------- */
+var resumoId=null;
+function abrirResumo(id, recem){
+  resumoId=id; var v=acharVisita(id), h='';
+  $('rTitulo').textContent='Visita de '+dataBR(v.inicio);
+  if(recem) h+='<div class="ok"><b>Visita terminada.</b> Agora envie o relatório no grupo do projeto.</div>';
+  var temProb=false; for(var n=1;n<=12;n++) if(problemas(v.col[n]).length) temProb=true;
+  if(temProb) h+='<div class="aviso">Há problemas para avisar hoje.</div><button class="botao vermelho" onclick="compartilhar(textoAviso(acharVisita(resumoId)),\'Aviso de problema\')">Enviar aviso de problema</button>';
+  h+='<button class="botao verde" onclick="compartilhar(textoRelatorio(acharVisita(resumoId)),\'Relatório da visita\')">Enviar relatório da visita</button>';
+  var cmr=contarMidias(v), env=v.sincEm && !visitaPendente(v);
+  h+='<div class="'+(env?'ok':'dica')+'">'+(env?'Registros enviados ao servidor.':'Registros ainda não enviados ao servidor. O envio é automático quando houver internet.')+(cmr.fotos||cmr.audios?' Fotos: '+cmr.fotos+' · Áudios: '+cmr.audios+'.':'')+'</div>';
+  if(!env) h+='<button class="botao claro" onclick="sincronizar(true)">Sincronizar agora</button>';
+  var mvr=medicoesVisita(v);
+  if(mvr.vinc) h+='<div class="'+(mvr.ok===mvr.vinc?'ok':'aviso')+'">Medições dos aparelhos baixadas em <b>'+mvr.ok+' de '+mvr.vinc+'</b> colônia(s).'+(mvr.ok<mvr.vinc?' Nas que faltaram, marque Dados: Não e avise a equipe.':'')+'</div>';
+  h+='<div class="cartao"><h3 style="margin-top:0">Colônias</h3>';
+  for(n=1;n<=12;n++){
+    var r=v.col[n], p=problemas(r), bola, cor;
+    if(!completo(r)){ bola=n; cor=p.length?'background:var(--alerta);color:#fff':'background:#E6DDD2;color:var(--suave)'; }
+    else if(p.length){ bola=n; cor='background:var(--alerta);color:#fff'; } else { bola=n; cor='background:var(--folha);color:#fff'; }
+    h+='<div class="item"><div class="bola" style="'+cor+'">'+bola+'</div><div class="meio">';
+    if(!completo(r)) h+= p.length? p.map(function(x){return '<span class="etq r">'+nomeProb(x,r)+'</span>';}).join('')+'<span class="suave"> (incompleta)</span>' : '<span class="suave">Não registrada</span>';
+    else {
+      h+=p.length? p.map(function(x){return '<span class="etq r">'+nomeProb(x,r)+'</span>';}).join('') : '<span class="etq v">tudo certo</span>';
+      if(r.manejo && r.manejo!=='Nenhum') h+='<span class="etq m">'+esc(r.manejo)+'</span>';
+      if(r.placa==='Sujo') h+='<span class="etq m">placa suja</span>';
+      if(r.mov==='Pouco') h+='<span class="etq m">pouco movimento</span>';
+      if(r.midias&&r.midias.length) h+='<span class="etq m">'+r.midias.length+' mídia(s)</span>';
+      if(r.download&&r.download.ok) h+='<span class="etq v">'+r.download.n+' medição(ões)</span>'+(r.download.agora&&r.download.agora.peso!=null?'<span class="etq m">'+(+r.download.agora.peso).toFixed(2)+' kg</span>':'');
+      if(r.obs) h+='<div class="suave" style="margin-top:4px">'+esc(r.obs)+'</div>';
+    }
+    h+='</div></div>';
+  }
+  h+='</div><button class="botao claro" onclick="apagarVisita()">Apagar esta visita</button>';
+  $('rConteudo').innerHTML=h; $('telaResumo').classList.add('aberta'); $('telaResumo').scrollTop=0;
+}
+function marcarEnviado(b){ var vv=acharVisita(resumoId); vv.enviadoSistema=b; vv.alterado=Date.now(); salvar(); sincronizar(false); toast(b?'Marcado como enviado':'Marcado como não enviado'); }
+function apagarVisita(){ if(!confirm('Apagar esta visita do celular? O que já foi enviado continua no servidor.')) return;
+  var va=acharVisita(resumoId); for(var n=1;n<=12;n++){ var rr=va.col[n]; if(rr&&rr.midias&&temPonte('apagarMidia')) rr.midias.forEach(function(m){ Android.apagarMidia(m.id); }); } E.visitas=E.visitas.filter(function(x){return x.id!==resumoId;}); salvar(); fecharResumo(); }
+function fecharResumo(){ $('telaResumo').classList.remove('aberta'); resumoId=null; irAba(abaAtual); }
+
+/* ---------- histórico ---------- */
+function telaHistorico(){
+  var fin=E.visitas.filter(function(v){return v.fim;}).slice().reverse(), h='<h2>Histórico de visitas</h2>';
+  if(!fin.length){ $('aba-historico').innerHTML=h+'<div class="cartao">Nenhuma visita terminada ainda. As visitas aparecem aqui depois de tocar em "Terminar visita".</div>'; return; }
+  var semana=0, lim=Date.now()-28*86400000; fin.forEach(function(v){ if(new Date(v.inicio).getTime()>lim) semana++; });
+  h+='<div class="cartao"><b>'+fin.length+'</b> visita(s) no total · <b>'+semana+'</b> nas últimas 4 semanas</div><div class="cartao">';
+  fin.forEach(function(v){
+    var feitas=0,pr=0; for(var n=1;n<=12;n++){ if(completo(v.col[n])){feitas++; if(problemas(v.col[n]).length)pr++;} }
+    h+='<div class="item" onclick="abrirResumo(\''+v.id+'\')"><div class="bola" style="background:'+(pr?'var(--alerta)':'var(--folha)')+';color:#fff">'+feitas+'</div><div class="meio"><b>'+dataBR(v.inicio)+'</b> às '+horaBR(v.inicio)+'<br>'+
+      (pr?'<span class="etq r">'+pr+' com problema</span>':'<span class="etq v">sem problemas</span>')+(visitaPendente(v)?'<span class="etq m">aguardando envio</span>':'<span class="etq v">no servidor</span>')+(function(){ var m=medicoesVisita(v); return m.vinc?'<span class="etq '+(m.ok===m.vinc?'v':'m')+'">medições '+m.ok+'/'+m.vinc+'</span>':''; })()+'</div><div style="font-size:26px;color:var(--suave)">›</div></div>';
+  });
+  h+='</div><button class="botao verde" onclick="sincronizar(true)">Sincronizar agora</button><button class="botao claro" onclick="exportarPlanilha()">Enviar todas as visitas em planilha (CSV)</button>';
+  $('aba-historico').innerHTML=h;
+}
+function exportarPlanilha(){
+  var q=function(s){ s=String(s==null?'':s); return /[;"\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s; };
+  var t='data;hora_inicio;hora_fim;monitor;colonia;especie;ambiente;melgueira;aparelho_n;dados_baixados;movimento;pragas;qual_praga;caixa;placa_fios;aparelho;manejo;observacoes;dados_enviados_sistema\n';
+  E.visitas.filter(function(v){return v.fim;}).forEach(function(v){
+    for(var n=1;n<=12;n++){ var r=v.col[n]||{}, c=E.colonias[n-1];
+      t+=[dataBR(v.inicio),horaBR(v.inicio),horaBR(v.fim),v.monitor,n,c.especie,c.ambiente,c.melgueira,c.aparelho,r.dados,r.mov,r.pragas,r.pragaQual,r.caixa,r.placa,r.aparelho,r.manejo,r.obs,v.enviadoSistema?'Sim':'Não'].map(q).join(';')+'\n'; }
+  });
+  compartilhar(t,'Planilha de visitas — '+E.monitor);
+}
+
+/* ---------- guia ---------- */
+function telaGuia(){
+  var h='<h2>Guia do monitor</h2>';
+  h+='<details open><summary>O trabalho em poucas palavras</summary><div class="det"><ul class="sub">'+
+   '<li>Visitar as <b>12 colônias uma vez por semana</b>, sempre no mesmo dia e horário.</li>'+
+   '<li>Em cada visita: baixar os dados, olhar a colônia e o aparelho, anotar e avisar se houver problema.</li>'+
+   '<li>Participar da <b>reunião mensal</b> com FIS, Sakuma e Amazônia Bee.</li>'+
+   '<li>O trabalho vai da instalação dos aparelhos até <b>outubro de 2027</b>.</li></ul></div></details>';
+  h+='<details><summary>Passo a passo da visita</summary><div class="det">'+
+   '<h3>Antes de sair</h3><ol class="passos"><li>Carregar o celular.</li><li>Ligar o Bluetooth.</li><li>Levar pano limpo para a placa solar.</li></ol>'+
+   '<h3>Em cada colônia</h3><ol class="passos"><li>Chegar com calma, sem bater nem abrir a melgueira.</li><li>Abrir a colônia neste aplicativo e tocar em <b>Baixar dados do aparelho</b>. Esperar terminar: aparecem as medidas do momento.</li><li>Olhar a colônia por fora: movimento na entrada, pragas, umidade ou estragos na caixa.</li><li>Olhar o aparelho: placa limpa e virada para o sol, fios presos, caixa fechada e sem água, aparelho no lugar.</li><li>Registrar neste aplicativo. Se estiver tudo certo, use "Tudo normal".</li><li>Se notar algo diferente, tirar foto ou gravar áudio.</li></ol>'+
+   '<h3>Depois da visita</h3><ol class="passos"><li>Tocar em "Terminar visita" e enviar o relatório no grupo.</li><li>Com internet, o aplicativo envia tudo sozinho: registros, fotos, áudios e medições dos aparelhos.</li><li>Se houver problema, avisar no mesmo dia e mandar as fotos.</li></ol>'+
+   '<div class="dica">Visite sempre no mesmo dia, mesmo horário e na mesma ordem. Se não puder ir, vá no dia seguinte no mesmo horário e avise no grupo. Com chuva forte, adie para o dia seguinte.</div></div></details>';
+  h+='<details><summary>Quando algo der errado</summary><div class="det"><table>'+
+   '<tr><th>Problema</th><th>O que fazer</th></tr>'+
+   '<tr><td>Aparelho não encontrado ou download parou</td><td>Chegar mais perto (até 5 metros), conferir se a tela do aparelho está acesa e tocar em Tentar de novo. Se continuar, marcar Dados: Não e avisar no mesmo dia.</td></tr><tr><td>Pede permissão de Bluetooth ou localização</td><td>Tocar em Permitir. Sem essa permissão o celular não procura os aparelhos.</td></tr>'+
+   '<tr><td>Placa solar suja</td><td>Limpar com pano seco ou levemente úmido.</td></tr>'+
+   '<tr><td>Placa quebrada ou fio cortado</td><td>Tirar foto, não mexer e avisar no mesmo dia.</td></tr>'+
+   '<tr><td>Água dentro do aparelho</td><td>Tirar foto, não abrir e avisar no mesmo dia.</td></tr>'+
+   '<tr><td>Aparelho mexido ou desaparecido</td><td>Tirar foto do local e avisar a equipe e a Amazônia Bee.</td></tr>'+
+   '<tr><td>Colônia fraca, atacada ou morta</td><td>Tirar foto, anotar e avisar no mesmo dia.</td></tr></table>'+
+   '<div class="aviso">Não abra o aparelho nem mexa nos fios sem orientação da equipe técnica.</div></div></details>';
+  h+='<details><summary>Etapas do trabalho</summary><div class="det"><table>'+
+   '<tr><th>Etapa</th><th>Período</th></tr>'+
+   '<tr><td>Instalação dos aparelhos e treinamento</td><td>Início</td></tr>'+
+   '<tr><td>Etapa 1 — melgueira pequena</td><td>Da instalação até abril de 2027</td></tr>'+
+   '<tr><td>Troca para a melgueira grande</td><td>Março ou abril de 2027</td></tr>'+
+   '<tr><td>Etapa 2 — melgueira grande</td><td>Abril a outubro de 2027</td></tr>'+
+   '<tr><td>Encerramento</td><td>Outubro de 2027</td></tr></table>'+
+   '<h3>Na troca da melgueira</h3><ol class="passos"><li>Combinar a data com a equipe técnica.</li><li>Passar o aparelho para a melgueira nova, como diz o manual.</li><li>Marcar "Troca de melgueira" em cada colônia neste aplicativo.</li><li>Baixar os dados logo depois para conferir se o aparelho voltou a medir.</li></ol></div></details>';
+  h+='<details><summary>Reunião mensal</summary><div class="det"><p>Uma vez por mês, com FIS, Anderson Sakuma e Amazônia Bee, presencial ou pelo celular.</p><ol class="passos"><li>Monitores contam o que viram no mês.</li><li>A equipe mostra os primeiros resultados.</li><li>Revisão dos problemas e consertos.</li><li>Combinação dos ajustes e próximas tarefas.</li></ol><p class="suave">Dica: abra o Histórico durante a reunião para lembrar o que aconteceu.</p></div></details>';
+  h+='<details><summary>O que a pesquisa quer descobrir</summary><div class="det"><ol class="passos">'+
+   '<li>Como as colônias reagem à troca da melgueira tradicional pela nova?</li>'+
+   '<li>O que muda no desenvolvimento, no calor e na umidade da caixa e na produção?</li>'+
+   '<li>A espécie e o ambiente (igapó ou terra firme) mudam o resultado?</li>'+
+   '<li>A melgueira grande, a partir de abril, muda o desempenho?</li>'+
+   '<li>A produção de mel e saburá foi maior que na safra anterior e que nas melgueiras antigas?</li>'+
+   '<li>O que explica a melhora, ou a falta dela?</li></ol></div></details>';
+  $('aba-guia').innerHTML=h;
+}
+
+/* ---------- ajustes ---------- */
+function telaAjustes(){
+  var h='<h2>Ajustes</h2><div class="cartao"><h3 style="margin-top:0">Monitor deste celular</h3><div class="opcoes">';
+  ['Sr. Jatir','Dona Maria Diniz'].forEach(function(m){ h+='<button class="'+(E.monitor===m?'sel':'')+'" onclick="escolherMonitor(\''+m+'\',true)">'+m+'</button>'; });
+  h+='</div><h3>Dia e horário da visita</h3><div class="linha2"><select onchange="E.agenda.dia=this.value;salvar()"><option value="">Dia</option>';
+  DIAS.forEach(function(d){ h+='<option'+(E.agenda.dia===d?' selected':'')+'>'+d+'</option>'; });
+  h+='</select><input type="time" value="'+esc(E.agenda.hora)+'" onchange="E.agenda.hora=this.value;salvar()"></div></div>';
+  h+='<div class="cartao"><h3 style="margin-top:0">Identificação das colônias</h3><p class="suave">Preencher na instalação, junto com a equipe técnica.</p>';
+  for(var n=1;n<=12;n++){
+    var c=E.colonias[n-1];
+    h+='<details style="border-color:var(--linha)"><summary style="font-size:17px">Colônia '+n+(colInfo(n)?' <span class="suave" style="font-weight:400">· '+esc(colInfo(n))+'</span>':'')+'</summary><div class="det">'+
+     sel(n,'especie','Espécie',['Melipona interrupta','Melipona seminigra'])+
+     sel(n,'ambiente','Ambiente',['Igapó','Terra firme'])+
+     sel(n,'melgueira','Melgueira',['Nova','Antiga'])+
+     '<label class="suave" style="display:block;margin-top:10px">Aparelho de medição</label><div style="display:flex;gap:8px"><input placeholder="BM-……" value="'+esc(c.aparelho)+'" onchange="E.colonias['+(n-1)+'].aparelho=this.value.trim().toUpperCase();salvar()"><button class="botao claro" style="width:auto;margin:0;padding:8px 14px;font-size:15px" onclick="abrirBusca('+n+')">Procurar</button></div>'+
+     '<label class="suave" style="display:block;margin-top:10px">Local / meliponário</label><input value="'+esc(c.local)+'" onchange="E.colonias['+(n-1)+'].local=this.value;salvar()"></div></details>';
+  }
+  h+='</div><div class="cartao"><h3 style="margin-top:0">Aparelhos de medição</h3>';
+  var lig=E.colonias.filter(function(c){return c.aparelho;});
+  if(!lig.length) h+='<p class="suave">Nenhum aparelho vinculado ainda.</p>';
+  else { h+='<table><tr><th>Colônia</th><th>Aparelho</th><th>Último download</th></tr>'; E.colonias.forEach(function(c){ if(!c.aparelho) return; var a=E.aparelhos[c.aparelho]||{}; h+='<tr><td>'+c.n+'</td><td>'+esc(c.aparelho)+'</td><td>'+(a.ultimoDownload?dataBR(a.ultimoDownload)+' '+horaBR(a.ultimoDownload):'—')+'</td></tr>'; }); h+='</table>'; }
+  h+='<button class="botao claro" onclick="abrirBusca(0)">Procurar aparelhos por perto</button>';
+  h+='</div><div class="cartao"><h3 style="margin-top:0">Cópia de segurança</h3><p class="suave">Os registros ficam no celular até a sincronização. Se a sincronização não estiver funcionando, envie uma cópia para a equipe.</p>'+
+   '<button class="botao claro" onclick="compartilhar(JSON.stringify(E),\'Cópia de segurança — Monitor Meliponas\')">Enviar cópia de segurança</button>'+
+   '<button class="botao claro" onclick="restaurar()">Restaurar uma cópia</button></div>';
+  var pc=contarPendencias();
+  h+='<div class="cartao"><h3 style="margin-top:0">Sincronização com o servidor</h3>'+
+    '<p>'+(servidorPronto()?(pc.visitas||pc.midias||pc.lotes?'A enviar: '+pc.visitas+' visita(s), '+pc.midias+' foto(s)/áudio(s) e medições de '+pc.lotes+' download(s).':'Tudo sincronizado.'):'Ainda não configurada.')+
+    (E.sinc.ultima?'<br><span class="suave">Último envio: '+dataBR(E.sinc.ultima)+' às '+horaBR(E.sinc.ultima)+'</span>':'')+
+    (E.sinc.erro?'<br><span style="color:var(--alerta)">Último erro: '+esc(E.sinc.erro)+'</span>':'')+'</p>'+
+    '<label style="display:flex;gap:12px;align-items:center;margin:8px 0"><input type="checkbox" style="width:24px;height:24px" '+(E.midiasSoWifi?'checked':'')+' onchange="E.midiasSoWifi=this.checked;salvar()"> Enviar fotos, áudios e medições só no Wi-Fi</label>'+
+    '<button class="botao verde" onclick="sincronizar(true)">Sincronizar agora</button>'+
+    '<details style="margin-top:12px"><summary style="font-size:16px">Dados do servidor (equipe técnica)</summary><div class="det">'+
+    '<label class="suave">Endereço do servidor</label><input placeholder="https://xxxx.supabase.co" value="'+esc(E.servidor.url)+'" onchange="E.servidor.url=this.value.trim();salvar();mostrarSinc()">'+
+    '<label class="suave" style="display:block;margin-top:10px">Chave pública (anon)</label><input value="'+esc(E.servidor.chave)+'" onchange="E.servidor.chave=this.value.trim();salvar();mostrarSinc()">'+
+    '<label class="suave" style="display:block;margin-top:10px">Código do projeto</label><input value="'+esc(E.servidor.codigo)+'" onchange="E.servidor.codigo=this.value.trim();salvar();mostrarSinc()">'+
+    '<button class="botao claro" onclick="testarServidor()">Testar conexão</button></div></details></div>';
+  if(window.MM_WEB) h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Aponte a câmera para o código e, no Safari, toque em Compartilhar &gt; Adicionar à Tela de Início.</p><img src="qr-web.png" alt="QR code da versão web" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">andersonsakuma.github.io/monitor-meliponas/app</p></div>';
+  else if(window.MM_IOS) h+='<div class="cartao"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">No iPhone, a instalação é pelo aplicativo TestFlight, com o convite enviado pela equipe técnica. Em celulares Android, use o QR code da folha de instalação.</p></div>';
+  else h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Peça para a outra pessoa apontar a câmera do celular para este código.</p><img src="qr-app.png" alt="QR code do aplicativo" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">github.com/andersonsakuma/monitor-meliponas/releases/latest</p></div>';
+  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.0 · FIS | IPÊ · Amazônia Bee</p>';
+  $('aba-ajustes').innerHTML=h;
+}
+function sel(n,campo,rot,ops){
+  var c=E.colonias[n-1], h='<label class="suave" style="display:block;margin-top:10px">'+rot+'</label><select onchange="E.colonias['+(n-1)+'].'+campo+'=this.value;salvar()"><option value="">—</option>';
+  ops.forEach(function(o){ h+='<option'+(c[campo]===o?' selected':'')+'>'+o+'</option>'; });
+  return h+'</select>';
+}
+function restaurar(){
+  var t=prompt('Cole aqui o texto da cópia de segurança:'); if(!t) return;
+  try{ var d=JSON.parse(t); if(!d.visitas||!d.colonias) throw 0;
+    if(!confirm('Substituir todos os dados deste celular pela cópia?')) return;
+    E=d; salvar(); cabecalho(); irAba('ajustes'); toast('Cópia restaurada');
+  }catch(e){ alert('O texto colado não é uma cópia de segurança válida.'); }
+}
+function escolherMonitor(m, deAjustes){
+  E.monitor=m; salvar(); $('boasVindas').classList.remove('aberta'); cabecalho();
+  if(deAjustes){ telaAjustes(); toast('Monitor: '+m); } else irAba('visita');
+}
+
+/* ---------- botão voltar do Android ---------- */
+window.voltar=function(){
+  if($('telaBusca').classList.contains('aberta')){ fecharBusca(); return true; }
+  if($('formColonia').classList.contains('aberta')){ if(baixando){ toast('Aguarde o download do aparelho'); return true; } fecharColonia(); return true; }
+  if($('telaResumo').classList.contains('aberta')){ fecharResumo(); return true; }
+  if(abaAtual!=='visita'){ irAba('visita'); return true; }
+  return false;
+};
+
+/* ---------- início ---------- */
+cabecalho();
+if(!E.monitor) $('boasVindas').classList.add('aberta');
+irAba('visita');
+setTimeout(function(){ sincronizar(false); }, 1500);
+</script>
+</body>
+</html>

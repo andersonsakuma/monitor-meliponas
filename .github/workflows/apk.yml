@@ -1,0 +1,53 @@
+name: Compilar aplicativo Android
+
+on:
+  push:
+    branches: [main]
+    paths: ['app-android/**', 'logos/**', '.github/workflows/apk.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar ferramentas Android
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq aapt apksigner zipalign dalvik-exchange android-sdk-platform-23 openjdk-17-jdk-headless
+
+      - name: Recuperar chave de assinatura
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then echo "$KEYSTORE_B64" | base64 -d > app-android/chave.jks; fi
+
+      - name: Compilar e assinar
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          CODIGO_PROJETO: ${{ secrets.CODIGO_PROJETO }}
+          KEYSTORE_SENHA: ${{ secrets.KEYSTORE_SENHA }}
+        run: |
+          cd app-android
+          export KEYSTORE_SENHA="${KEYSTORE_SENHA:-fis2026}"
+          ./build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MonitorMeliponas
+          path: app-android/saida/MonitorMeliponas.apk
+
+      - name: Publicar na página de versões
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSAO=$(grep -o 'versionName="[^"]*"' app-android/AndroidManifest.xml | cut -d'"' -f2)
+          TAG="app-v${VERSAO}-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" app-android/saida/MonitorMeliponas.apk \
+            --title "Monitor Meliponas ${VERSAO} (compilação ${GITHUB_RUN_NUMBER})" \
+            --notes "Aplicativo para os monitores. Baixe o arquivo MonitorMeliponas.apk no celular e instale." --latest

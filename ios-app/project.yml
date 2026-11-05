@@ -1,0 +1,51 @@
+# Projeto do Xcode gerado pelo XcodeGen:  xcodegen generate
+name: MonitorMeliponas
+options:
+  bundleIdPrefix: br.org.fis
+  deploymentTarget:
+    iOS: "15.0"
+  developmentLanguage: pt-BR
+settings:
+  base:
+    MARKETING_VERSION: "3.0"
+    CURRENT_PROJECT_VERSION: "7"
+targets:
+  MonitorMeliponas:
+    type: application
+    platform: iOS
+    sources:
+      - path: Fontes
+      - path: Recursos/Assets.xcassets
+      - path: Recursos/www
+        type: folder
+        buildPhase: resources
+    info:
+      path: Fontes/Info.plist
+      properties:
+        CFBundleDisplayName: Monitor Meliponas
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleDevelopmentRegion: pt-BR
+        LSRequiresIPhoneOS: true
+        UILaunchScreen:
+          UIColorName: AccentColor
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown]
+        UIRequiresFullScreen: true
+        ITSAppUsesNonExemptEncryption: false
+        NSBluetoothAlwaysUsageDescription: "O aplicativo usa o Bluetooth para baixar as medições dos aparelhos BeeMeter instalados nas colônias."
+        NSCameraUsageDescription: "O aplicativo usa a câmera para fotografar as colônias durante a visita."
+        NSMicrophoneUsageDescription: "O aplicativo usa o microfone para gravar observações em áudio sobre as colônias."
+        NSPhotoLibraryUsageDescription: "O aplicativo pode usar fotos da galeria nas observações das colônias."
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: br.org.fis.meliponas
+        PRODUCT_NAME: MonitorMeliponas
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SWIFT_VERSION: "5.0"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_BITCODE: NO

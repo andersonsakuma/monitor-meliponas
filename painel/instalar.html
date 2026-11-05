@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instalar o Monitor Meliponas</title>
+<link rel="icon" href="favicon.png">
+<style>
+:root{--madeira:#3B2414;--mel:#F2B233;--mel-claro:#FCEFC9;--folha:#2F6B3A;--texto:#24180F;--suave:#6B5D52;--linha:#DDD4CA}
+*{box-sizing:border-box}
+body{margin:0;background:#F3F0EB;color:var(--texto);font-family:"Source Sans 3","Segoe UI",Roboto,system-ui,sans-serif;font-size:17px;line-height:1.45}
+.folha{max-width:760px;margin:24px auto;background:#fff;border:1px solid var(--linha);border-radius:14px;padding:32px 40px}
+.logos{display:flex;gap:12px;align-items:center;justify-content:center;margin-bottom:10px}
+.logos{gap:28px}.logos img{height:78px}.logos .marca{display:flex;align-items:center;gap:8px}.logos .marca img{height:66px}.logos .marca b{color:#7A4A12;font-size:18px}
+.logos .txt{font-weight:700;font-size:14px;border:2px solid var(--linha);border-radius:8px;padding:8px 12px;color:var(--madeira)}
+h1{text-align:center;color:var(--madeira);font-size:30px;margin:8px 0 2px}
+.sub{text-align:center;color:var(--suave);margin:0 0 20px}
+.qr{display:flex;flex-direction:column;align-items:center;margin:10px 0 18px}
+.qr img{width:300px;height:300px;border:10px solid var(--mel);border-radius:18px}
+.qr .leg{margin-top:10px;font-weight:700;font-size:19px;color:var(--madeira)}
+ol{padding-left:26px;margin:0}
+ol li{margin-bottom:10px}
+.aviso{background:var(--mel-claro);border-left:6px solid var(--mel);padding:12px 16px;border-radius:8px;margin:18px 0}
+.link{word-break:break-all;font-size:14px;color:var(--suave);text-align:center}
+.botoes{text-align:center;margin-top:18px}
+.botoes a,.botoes button{display:inline-block;background:var(--folha);color:#fff;text-decoration:none;border:0;border-radius:10px;padding:12px 20px;font:inherit;font-weight:700;margin:4px;cursor:pointer}
+.botoes .sec{background:#fff;color:var(--texto);border:2px solid var(--linha)}
+@media print{ body{background:#fff} .folha{border:0;margin:0;padding:10mm 14mm;max-width:none} .botoes{display:none} }
+</style>
+</head>
+<body>
+<div class="folha">
+  <div class="logos"><img src="logos/ipe-fis.png" alt="IPÊ | FIS" onerror="this.outerHTML='<span class=txt>IPÊ | FIS</span>'"><span class="marca"><img src="logos/amazonia-bee.png" alt="Amazônia Bee"><b>Amazônia Bee</b></span></div>
+  <h1>Monitor Meliponas</h1>
+  <p class="sub">Aplicativo das visitas semanais às colônias — Protótipo de Meliponicultura, Cametá do Ramos (AM)</p>
+
+  <div class="qr"><img src="qr-app.png" alt="QR code para baixar o aplicativo"><div class="leg">Aponte a câmera do celular</div></div>
+
+  <ol>
+    <li>Abra a <b>câmera</b> do celular Android e aponte para o código acima.</li>
+    <li>Toque no link que aparecer. O arquivo <b>MonitorMeliponas.apk</b> começa a baixar.</li>
+    <li>Quando terminar, toque em <b>Abrir</b>. Se o celular pedir, permita <b>instalar apps desta fonte</b>.</li>
+    <li>Toque em <b>Instalar</b>. Se aparecer o aviso do Play Protect, toque em <b>Mais detalhes</b> e depois em <b>Instalar assim mesmo</b>.</li>
+    <li>Abra o aplicativo e escolha o seu nome.</li>
+  </ol>
+
+  <div class="aviso">Para baixar, o celular precisa estar com internet. Depois de instalado, o aplicativo funciona sem internet no meliponário.</div>
+  <p class="link">Sem câmera? Digite no navegador:<br>github.com/andersonsakuma/monitor-meliponas/releases/latest</p>
+
+  <h2 style="color:var(--madeira);margin:26px 0 8px;font-size:22px;text-align:center">iPhone</h2>
+  <div class="qr"><img src="qr-web.png" alt="QR code da versão para iPhone" style="width:220px;height:220px"><div class="leg">Versão para o navegador</div></div>
+  <ol>
+    <li>Aponte a câmera do iPhone para o código acima e abra o link no <b>Safari</b>.</li>
+    <li>Toque em <b>Compartilhar</b> e depois em <b>Adicionar à Tela de Início</b>. O aplicativo aparece como um ícone e funciona sem internet no meliponário.</li>
+    <li>Para baixar os dados dos aparelhos BeeMeter pelo Bluetooth, instale o navegador gratuito <b>Bluefy</b> na App Store e abra o mesmo endereço nele. No Safari, a visita, as fotos e os áudios funcionam normalmente; só o download dos aparelhos fica para o celular Android ou para o Bluefy.</li>
+  </ol>
+  <p class="link">Endereço: andersonsakuma.github.io/monitor-meliponas/app</p>
+
+  <div class="botoes">
+    <a href="https://github.com/andersonsakuma/monitor-meliponas/releases/latest/download/MonitorMeliponas.apk">Baixar o aplicativo</a>
+    <button class="sec" onclick="print()">Imprimir esta folha</button>
+  </div>
+</div>
+</body>
+</html>

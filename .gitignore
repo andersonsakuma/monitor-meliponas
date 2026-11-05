@@ -1,0 +1,4 @@
+app-android/build/
+app-android/saida/
+*.jks
+*.keystore
