@@ -34,6 +34,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         var periferico: CBPeripheral?
         var etapa = 0
         var tentativas = 0
+        var piscar = false
         var info: [String: Any] = [:]
         var agora: Any = NSNull()
         var epocaCelular: Int64 = 0
@@ -115,7 +116,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
             self.pararBusca()
             if let alvo = self.alvo, let s = self.sessao {
                 self.sessao = nil
-                self.erro(s.chave, "Aparelho \(alvo) não encontrado. Chegue mais perto da caixa, confira se a tela do aparelho está acesa e tente de novo.")
+                self.erro(s.chave, "Aparelho \(alvo) não encontrado. Chegue mais perto da caixa e confira se a tela está acesa. Se outro celular estiver conectado a ele, espere terminar.")
             } else {
                 let lista = self.achados.map { "{\"id\":\"\($0.key)\",\"rssi\":\($0.value)}" }.joined(separator: ",")
                 self.saida("window.bleBuscaFim && bleBuscaFim(\(self.q(self.chaveBusca)),[\(lista)])")
@@ -143,15 +144,29 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         }
         let novo = achados[nome] == nil
         achados[nome] = RSSI.intValue
-        if novo { saida("window.bleAchado && bleAchado(\(q(chaveBusca)),{id:\(q(nome)),rssi:\(RSSI.intValue)})") }
+        var col = ""
+        if let fab = adv[CBAdvertisementDataManufacturerDataKey] as? Data, fab.count >= 5 {
+            let b = [UInt8](fab)
+            if b[2] == UInt8(ascii: "B") && b[3] == UInt8(ascii: "M") { col = ",colonia:\(b[4])" }
+        }
+        if novo { saida("window.bleAchado && bleAchado(\(q(chaveBusca)),{id:\(q(nome)),rssi:\(RSSI.intValue)\(col)})") }
     }
 
     // MARK: download
 
+    func identificar(chave: String, id: String) {
+        iniciar(chave: chave, id: id, desde: 0, colonia: 0, piscar: true)
+    }
+
     func baixar(chave: String, id: String, desde: Int64, colonia: Int) {
+        iniciar(chave: chave, id: id, desde: desde, colonia: colonia, piscar: false)
+    }
+
+    private func iniciar(chave: String, id: String, desde: Int64, colonia: Int, piscar: Bool) {
         comBluetooth(chave) {
-            if self.sessao != nil { self.erro(chave, "Já há um download em andamento."); return }
+            if self.sessao != nil { self.erro(chave, "Já há uma conexão em andamento."); return }
             self.sessao = Sessao(chave: chave, id: id, desde: desde, colonia: colonia)
+            self.sessao!.piscar = piscar
             self.progresso(chave, "Procurando \(id)…", 5)
             self.iniciarBusca(chave: chave, segundos: 15, alvo: id)
         }
@@ -241,6 +256,12 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         guard let d = s.cDados, s.cInfo != nil, s.cAgora != nil, s.cComando != nil else {
             encerrar("Aparelho sem o serviço completo do BeeMeter."); return
         }
+        if s.piscar {
+            s.etapa = 9
+            sessao = s
+            escrever(p, "PISCAR")
+            return
+        }
         s.etapa = 1
         sessao = s
         p.setNotifyValue(true, for: d)
@@ -268,13 +289,21 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
             guard let o = (try? JSONSerialization.jsonObject(with: v)) as? [String: Any] else { encerrar("Resposta inválida do aparelho."); return }
             s.info = o
             s.epocaCelular = Int64(Date().timeIntervalSince1970)
+            let colAparelho = (o["colonia"] as? NSNumber)?.intValue ?? 0
+            let colPedida = abs(s.colonia)
+            if colPedida > 0 && colAparelho > 0 && colAparelho != colPedida && s.colonia > 0 {
+                let chave = s.chave
+                encerrar(nil)
+                saida("window.bleErro && bleErro(\(q(chave)),\(q("Este aparelho está gravado como colônia \(colAparelho), não \(colPedida). Confira se está na caixa certa.")),'colonia',\(colAparelho))")
+                return
+            }
             let proximo = (o["proximo"] as? NSNumber)?.int64Value ?? 1
             let primeiro = (o["primeiro"] as? NSNumber)?.int64Value ?? 1
             if s.desde > proximo { s.desde = 0 }
             s.esperados = max(0, proximo - max(s.desde, primeiro))
             s.etapa = 3
             sessao = s
-            escrever(p, "HORA \(s.epocaCelular)")
+            escrever(p, "HORA \(s.epocaCelular)" + (colPedida > 0 && colAparelho != colPedida ? " \(colPedida)" : ""))
         case BeeMeterBLE.C_AGORA:
             s.agora = (try? JSONSerialization.jsonObject(with: v)) ?? NSNull()
             s.etapa = 5
@@ -293,6 +322,13 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
                 }
                 sessao = s
             } else if t == UInt8(ascii: "F") {
+                if v.count >= 9 {
+                    let f = [UInt8](v)
+                    let crcAparelho = UInt32(f[5]) | UInt32(f[6]) << 8 | UInt32(f[7]) << 16 | UInt32(f[8]) << 24
+                    if BeeMeterBLE.crc32([UInt8](s.fluxo)) != crcAparelho {
+                        encerrar("Os dados chegaram com falha. Toque em Tentar de novo."); return
+                    }
+                }
                 concluir(s)
             }
         default: break
@@ -303,11 +339,27 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         guard var s = sessao else { return }
         vivo()
         if error != nil { encerrar("Não foi possível enviar o comando ao aparelho."); return }
+        if s.etapa == 9 {
+            let chave = s.chave, id = s.id
+            encerrar(nil)
+            saida("window.bleIdentificado && bleIdentificado(\(q(chave)),\(q(id)))")
+            return
+        }
         if s.etapa == 3 {
             s.etapa = 4
             sessao = s
             p.readValue(for: s.cAgora!)
         }
+    }
+
+    /// CRC32 igual ao do firmware e do zlib (polinômio 0xEDB88320).
+    static func crc32(_ dados: [UInt8]) -> UInt32 {
+        var crc: UInt32 = 0xFFFF_FFFF
+        for b in dados {
+            crc ^= UInt32(b)
+            for _ in 0..<8 { crc = (crc >> 1) ^ (0xEDB8_8320 & (0 &- (crc & 1))) }
+        }
+        return ~crc
     }
 
     private func u32(_ d: [UInt8], _ i: Int) -> Int64 {
@@ -361,7 +413,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
             }
         }
         let res: [String: Any] = [
-            "id": s.id, "fw": s.info["fw"] ?? "", "boot": s.info["boot"] ?? 0, "intervalo": s.info["intervalo"] ?? 0,
+            "id": s.id, "colonia": abs(s.colonia), "fw": s.info["fw"] ?? "", "boot": s.info["boot"] ?? 0, "intervalo": s.info["intervalo"] ?? 0,
             "tara": s.info["tara"] ?? false, "proximo": s.info["proximo"] ?? 0, "n": n, "primeiro": primeiroSeq,
             "ultimo": ultimoSeq, "mIni": mIni, "mFim": mFim, "lote": nomeLote, "agora": s.agora, "quando": s.epocaCelular,
         ]

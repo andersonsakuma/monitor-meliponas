@@ -126,7 +126,9 @@ header .id{flex:1;min-width:0}
 .leituras span{font-size:11.5px;color:var(--suave)}
 .progresso{height:8px;background:#E6DDD2;border-radius:4px;overflow:hidden;margin-top:8px}
 .progresso span{display:block;height:100%;background:var(--mel);transition:width .3s}
-.achados button{display:flex;width:100%;justify-content:space-between;align-items:center;padding:12px;border:2px solid var(--linha);border-radius:10px;background:#fff;margin-top:8px;font-weight:700}
+.achados .linha{display:flex;gap:8px;margin-top:8px}
+.achados .esc{flex:1;display:flex;justify-content:space-between;align-items:center;padding:12px;border:2px solid var(--linha);border-radius:10px;background:#fff;font-weight:700;text-align:left}
+.achados .pis{width:auto;padding:0 14px;border:2px solid var(--mel);border-radius:10px;background:var(--mel-claro);font-weight:700;font-size:14px}
 </style>
 </head>
 <body>
@@ -541,26 +543,30 @@ function cartaoAparelho(n,r){
        '<button class="botao claro" onclick="baixarAparelho('+n+')">Baixar de novo</button>';
   } else {
     if(d&&d.erro) h+='<p style="margin:8px 0 0;color:var(--alerta)">'+esc(d.erro)+'</p>';
-    h+='<button class="botao" onclick="baixarAparelho('+n+')">'+(d&&d.erro?'Tentar de novo':'Baixar dados do aparelho')+'</button>';
+    if(d&&d.colErrada){
+      h+='<button class="botao claro" onclick="identificarAparelho(\''+esc(c.aparelho)+'\')">Fazer a tela do aparelho piscar</button>';
+      h+='<button class="botao" onclick="if(confirm(\'Regravar este aparelho como colônia '+n+'? Faça isso só se ele foi mesmo trocado de caixa.\')) baixarAparelho('+n+',true)">Regravar o aparelho como colônia '+n+'</button>';
+    } else h+='<button class="botao" onclick="baixarAparelho('+n+')">'+(d&&d.erro?'Tentar de novo':'Baixar dados do aparelho')+'</button>';
   }
   return h+'</div>';
 }
-function baixarAparelho(n){
+function baixarAparelho(n,forcar){
   if(!temPonte('bleBaixar')){ toast('O download funciona só no aplicativo instalado'); return; }
   if(baixando){ toast('Aguarde o download em andamento'); return; }
   var c=E.colonias[n-1], ap=E.aparelhos[c.aparelho]||{};
   baixando=n; bleTexto='Preparando o Bluetooth…'; blePct=2; redesenharMantendoRolagem();
-  Android.bleBaixar('baixar|'+E.atual+'|'+n, c.aparelho, String(ap.ultimoSeq?ap.ultimoSeq+1:0), n);
+  Android.bleBaixar('baixar|'+E.atual+'|'+n, c.aparelho, String(ap.ultimoSeq?ap.ultimoSeq+1:0), (forcar||ap.forcarColonia)?-n:n);
 }
 function cancelarDownload(){ if(temPonte('bleCancelar')) Android.bleCancelar(); baixando=null; redesenharMantendoRolagem(); }
 window.bleProgresso=function(chave,txt,pct){
   if(String(chave).indexOf('baixar|')!==0) return;
   bleTexto=txt; blePct=pct; var t=$('bleTxt'), b=$('blePct'); if(t) t.textContent=txt; if(b) b.style.width=pct+'%';
 };
-window.bleErro=function(chave,msg){
+window.bleErro=function(chave,msg,tipo,colAparelho){
+  if(chave==='piscar'){ toast(msg); return; }
   if(String(chave).indexOf('baixar|')===0){
     var p=chave.split('|'), v=acharVisita(p[1]), n=+p[2]; baixando=null;
-    if(v){ v.col[n]=v.col[n]||{}; v.col[n].download={ok:false,erro:msg}; salvar(); }
+    if(v){ v.col[n]=v.col[n]||{}; v.col[n].download={ok:false,erro:msg,colErrada:tipo==='colonia'?colAparelho:null}; salvar(); }
     if(colAberta===n) redesenharMantendoRolagem(); else toast(msg);
   } else {
     buscando=false; buscaErro=msg; if($('telaBusca').classList.contains('aberta')) desenharBusca(); else toast(msg);
@@ -571,13 +577,18 @@ window.bleConcluido=function(chave,res){
   var ap=E.aparelhos[res.id]||{};
   if(res.n>0) ap.ultimoSeq=res.ultimo;
   else if(ap.ultimoSeq && res.proximo && ap.ultimoSeq>=res.proximo) ap.ultimoSeq=res.proximo-1;
-  ap.ultimoDownload=new Date().toISOString(); ap.fw=res.fw; ap.colonia=n; E.aparelhos[res.id]=ap;
+  ap.ultimoDownload=new Date().toISOString(); ap.fw=res.fw; ap.colonia=n; ap.forcarColonia=false; E.aparelhos[res.id]=ap;
   if(v){ v.col[n]=v.col[n]||{}; var r=v.col[n]; res.ok=true; r.download=res; r.dados='Sim'; if(!r.hora) r.hora=new Date().toISOString(); }
   salvar();
   if(colAberta===n) redesenharMantendoRolagem();
   toast('Colônia '+n+': '+res.n+' registro(s) baixado(s)');
   if(!res.tara) setTimeout(function(){ toast('Aviso: a balança do aparelho está sem tara'); },2500);
 };
+function identificarAparelho(id){
+  if(!temPonte('bleIdentificar')){ toast('Atualize o aplicativo para usar esta função'); return; }
+  toast('Conectando ao '+id+'…'); Android.bleIdentificar('piscar',id);
+}
+window.bleIdentificado=function(chave,id){ toast('Olhe as caixas: a tela do '+id+' está piscando com o número da colônia'); };
 function medicoesVisita(v){
   var vinc=0, ok=0;
   for(var n=1;n<=12;n++){ if(E.colonias[n-1].aparelho){ vinc++; var r=v.col[n]; if(r&&r.download&&r.download.ok) ok++; } }
@@ -604,17 +615,24 @@ function desenharBusca(){
   var ids=Object.keys(achados).sort(function(a,b){ return achados[b].rssi-achados[a].rssi; }), h='';
   if(buscaErro) h+='<div class="aviso">'+esc(buscaErro)+'</div>';
   else h+='<p class="suave">'+(buscando?'Procurando aparelhos BeeMeter por perto…':(ids.length?'Toque no aparelho certo. O primeiro da lista é o mais perto.':'Nenhum aparelho encontrado. Chegue mais perto, confira se a tela do aparelho está acesa e procure de novo.'))+'</p>';
-  if(buscaColonia) h+='<div class="dica">Confira o nome que aparece na tela do aparelho (BM-…) antes de tocar.</div>';
+  if(buscaColonia) h+='<div class="dica">Com várias caixas perto, toque em <b>Piscar</b> e veja qual tela pisca antes de escolher. Confira também o nome BM-… na tela.</div>';
   h+='<div class="achados">';
-  ids.forEach(function(id){ var o=achados[id], usado=colDoAparelho(id);
-    h+='<button onclick="escolherAparelho(\''+id+'\')"><span>'+id+(usado?' <span class="suave" style="font-weight:400">· colônia '+usado+'</span>':'')+'</span><span class="suave">'+sinal(o.rssi)+'</span></button>'; });
+  ids.forEach(function(id){ var o=achados[id], usado=colDoAparelho(id), gravada=o.colonia||0;
+    var info=gravada?'gravado como colônia '+gravada:'sem colônia gravada';
+    if(usado && usado!==gravada) info+=' · vinculado à colônia '+usado;
+    h+='<div class="linha"><button class="esc" onclick="escolherAparelho(\''+id+'\')"><span>'+id+'<br><span class="suave" style="font-weight:400">'+info+'</span></span><span class="suave">'+sinal(o.rssi)+'</span></button>'+
+       (temPonte('bleIdentificar')?'<button class="pis" onclick="identificarAparelho(\''+id+'\')">Piscar</button>':'')+'</div>'; });
   h+='</div>';
   if(!buscando) h+='<button class="botao" onclick="iniciarBusca()">Procurar de novo</button>';
   $('bConteudo').innerHTML=h;
 }
 function escolherAparelho(id){
   if(!buscaColonia){ var u=colDoAparelho(id); toast(id+(u?' está vinculado à colônia '+u:' não está vinculado')); return; }
-  var outra=colDoAparelho(id);
+  var outra=colDoAparelho(id), gravada=(achados[id]&&achados[id].colonia)||0;
+  if(gravada && gravada!==buscaColonia){
+    if(!confirm(id+' está gravado como colônia '+gravada+'. Vincular à colônia '+buscaColonia+' e regravar o aparelho no próximo download?')) return;
+    var ap=E.aparelhos[id]||{}; ap.forcarColonia=true; E.aparelhos[id]=ap;
+  }
   if(outra && outra!==buscaColonia){
     if(!confirm(id+' já está vinculado à colônia '+outra+'. Passar para a colônia '+buscaColonia+'?')) return;
     E.colonias[outra-1].aparelho='';
@@ -819,7 +837,7 @@ function telaAjustes(){
   if(window.MM_WEB) h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Aponte a câmera para o código e, no Safari, toque em Compartilhar &gt; Adicionar à Tela de Início.</p><img src="qr-web.png" alt="QR code da versão web" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">andersonsakuma.github.io/monitor-meliponas/app</p></div>';
   else if(window.MM_IOS) h+='<div class="cartao"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">No iPhone, a instalação é pelo aplicativo TestFlight, com o convite enviado pela equipe técnica. Em celulares Android, use o QR code da folha de instalação.</p></div>';
   else h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Peça para a outra pessoa apontar a câmera do celular para este código.</p><img src="qr-app.png" alt="QR code do aplicativo" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">github.com/andersonsakuma/monitor-meliponas/releases/latest</p></div>';
-  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.0 · FIS | IPÊ · Amazônia Bee</p>';
+  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.1 · FIS | IPÊ · Amazônia Bee</p>';
   $('aba-ajustes').innerHTML=h;
 }
 function sel(n,campo,rot,ops){

@@ -1,6 +1,20 @@
 /* ============================================================================
- * BeeMeter -- ESP32 HW-657A com TFT ST7789 integrado     firmware 2.2.0-BLE
+ * BeeMeter -- ESP32 HW-657A com TFT ST7789 integrado     firmware 2.3.0-BLE
  * Amazonia Bee  |  IPE / Fabrica de Inovacoes em Sociobioeconomia
+ *
+ * 2.3.0 -- 12 aparelhos lado a lado, sem troca nem mistura de dados:
+ *   - COLONIA: cada aparelho guarda o numero da sua colonia (1 a 12) na
+ *     memoria permanente. O numero aparece na tela, vai no anuncio Bluetooth
+ *     (dados do fabricante) e no INFO. O aplicativo confere a colonia antes
+ *     de baixar e grava o numero no primeiro download (HORA <epoca> <col>).
+ *   - PISCAR: o celular manda PISCAR e a tela mostra a colonia e o nome em
+ *     letras grandes, piscando por 15 s, para conferir a caixa certa.
+ *   - UM CELULAR POR VEZ: com um celular conectado o aparelho para de se
+ *     anunciar e recusa uma segunda conexao; volta a anunciar ao desconectar.
+ *   - INTEGRIDADE: o fim da transferencia ('F') leva tambem o CRC32 dos
+ *     bytes enviados; o celular confere e descarta o download se nao bater.
+ *   Pinos, sensores, calibracao do HX711, tara, tela, carrossel, registro de
+ *   31 dias e mensagens da serial continuam como na 2.2.0.
  *
  * 2.2.0 -- registro em memoria e Bluetooth para o aplicativo Monitor Meliponas:
  *   - REGISTRO: a cada 10 min (ajustavel de 1 a 60 min) grava um registro de
@@ -76,7 +90,7 @@
 
 #include "logos.h"
 
-#define FW_VERSAO "2.2.0-BLE"
+#define FW_VERSAO "2.3.0-BLE"
 
 /* ------------------------------------------------------------------------- */
 /* 1. PINAGEM (TC3 em TX2 / GPIO17; demais pinos mantidos)                    */
@@ -300,9 +314,14 @@ static uint8_t abertura_pct = 0;
 /* Bluetooth e registro (secao 11b): o painel dos logotipos mostra o nome do
  * aparelho e se ha celular conectado. */
 static char ble_nome[12] = "BM-??????";
+static uint8_t colonia_num = 0;               /* 0 = ainda sem colonia */
+static volatile uint32_t identificar_ate = 0; /* millis() do fim do PISCAR */
 static volatile bool ble_conectado = false;
 static volatile bool ble_transferindo = false;
 static const char* rodape_logos();
+static void colonia_definir(uint8_t c);
+static void ble_anuncio();
+static void cena_identificar(GFXcanvas16& c, int16_t oy);
 static uint16_t rodape_cor();
 
 /* Malha de favos: o desenho se repete a cada 14 x 24 px. Cada linha guarda 14
@@ -971,6 +990,11 @@ static uint32_t carrossel_espera(uint32_t t) {
 /* ------------------------------------------------------------------------- */
 
 static uint32_t tarefa_carrossel(uint32_t) {
+  if ((int32_t)(identificar_ate - millis()) > 0) {
+    renderizar(cena_identificar);
+    carrossel_sujo = true;   /* ao terminar, redesenha o carrossel */
+    return 100;
+  }
   const uint32_t t = millis() - carrossel_t0;
   const uint32_t pos = carrossel_posicao(t);
   if (pos != carrossel_pos || carrossel_sujo) {
@@ -1140,6 +1164,18 @@ static uint8_t cmd_serial_n = 0;
 static uint32_t tr_seq = 0, tr_fim = 0, tr_enviados = 0;
 static Registro tr_reg;
 static uint8_t tr_off = sizeof(Registro);
+static uint32_t tr_crc = 0;
+
+/* CRC32 (polinomio 0xEDB88320, o mesmo do zip): crc = crc32_mais(crc, ...)
+ * comecando de 0; o celular calcula igual sobre os bytes recebidos. */
+static uint32_t crc32_mais(uint32_t crc, const uint8_t* d, size_t n) {
+  crc = ~crc;
+  while (n--) {
+    crc ^= *d++;
+    for (uint8_t k = 0; k < 8; ++k) crc = (crc >> 1) ^ (0xEDB88320UL & (0UL - (crc & 1UL)));
+  }
+  return ~crc;
+}
 
 static uint32_t uptime_s() { return (uint32_t)(esp_timer_get_time() / 1000000ULL); }
 static uint32_t epoca_agora() { return epoca_base > 0 ? (uint32_t)(epoca_base + uptime_s()) : 0; }
@@ -1278,12 +1314,12 @@ static void json_num(char* dst, size_t n, bool ok, float v, const char* fmt) {
 static size_t montar_info(char* buf, size_t n) {
   return (size_t)snprintf(buf, n,
     "{\"id\":\"%s\",\"fw\":\"%s\",\"boot\":%u,\"up\":%lu,\"epoca\":%lu,"
-    "\"primeiro\":%lu,\"proximo\":%lu,\"n\":%lu,\"intervalo\":%lu,\"reg\":%s,\"tara\":%s}",
+    "\"primeiro\":%lu,\"proximo\":%lu,\"n\":%lu,\"intervalo\":%lu,\"reg\":%s,\"tara\":%s,\"colonia\":%u}",
     ble_nome, FW_VERSAO, (unsigned)boot_num, (unsigned long)uptime_s(),
     (unsigned long)epoca_agora(), (unsigned long)reg_seq_antigo(),
     (unsigned long)reg_cab.proximo_seq, (unsigned long)reg_cab.quantidade,
     (unsigned long)reg_cab.intervalo_s, reg_ok ? "true" : "false",
-    hx711_tara_ok ? "true" : "false");
+    hx711_tara_ok ? "true" : "false", (unsigned)colonia_num);
 }
 
 static size_t montar_agora(char* buf, size_t n) {
@@ -1309,6 +1345,7 @@ static void tr_iniciar(uint32_t desde) {
   if (tr_seq > tr_fim) tr_seq = tr_fim;
   tr_enviados = 0;
   tr_off = sizeof(Registro);
+  tr_crc = 0;
   ble_transferindo = true;
   carrossel_sujo = true;
   Serial.printf("BLE: enviando seq %lu..%lu\n", (unsigned long)tr_seq, (unsigned long)tr_fim);
@@ -1335,13 +1372,21 @@ static void executar_comando(char* cmd, bool pela_serial) {
   for (char* p = cmd; *p; ++p) *p = (char)toupper((unsigned char)*p);
 
   if (!strcmp(cmd, "HORA") && arg) {
-    const long long e = atoll(arg);
+    char* resto = nullptr;
+    const long long e = strtoll(arg, &resto, 10);
     if (e > 1600000000LL) {
       epoca_base = e - (int64_t)uptime_s();
       Serial.printf("RELOGIO: acertado para %lld\n", e);
     }
+    if (resto && *resto) colonia_definir((uint8_t)strtoul(resto, nullptr, 10));
+  } else if (!strcmp(cmd, "COLONIA") && arg) {
+    colonia_definir((uint8_t)strtoul(arg, nullptr, 10));
+  } else if (!strcmp(cmd, "PISCAR")) {
+    identificar_ate = millis() + 15000UL;
+    carrossel_sujo = true;
+    Serial.println("PISCAR: identificando o aparelho na tela");
   } else if (!strcmp(cmd, "LER") && !pela_serial) {
-    tr_iniciar(arg ? (uint32_t)strtoul(arg, nullptr, 10) : 0);
+    if (!ble_transferindo) tr_iniciar(arg ? (uint32_t)strtoul(arg, nullptr, 10) : 0);
   } else if (!strcmp(cmd, "INTERVALO") && arg) {
     uint32_t s = (uint32_t)strtoul(arg, nullptr, 10);
     if (s >= 60 && s <= 3600) {
@@ -1371,14 +1416,21 @@ static void executar_comando(char* cmd, bool pela_serial) {
 /* ---- Bluetooth ---- */
 
 class CbServidor : public NimBLEServerCallbacks {
-  void onConnect(NimBLEServer*) override {
+  void onConnect(NimBLEServer* srv, ble_gap_conn_desc* desc) override {
+    if (srv->getConnectedCount() > 1) {      /* ja ha um celular: recusa o segundo */
+      srv->disconnect(desc->conn_handle);
+      return;
+    }
+    NimBLEDevice::stopAdvertising();          /* some da busca enquanto atende */
     ble_conectado = true;
     carrossel_sujo = true;
   }
-  void onDisconnect(NimBLEServer*) override {
+  void onDisconnect(NimBLEServer* srv) override {
+    if (srv->getConnectedCount() > 0) return; /* era o segundo, recusado */
     ble_conectado = false;
     ble_transferindo = false;
     carrossel_sujo = true;
+    NimBLEDevice::startAdvertising();
   }
 };
 
@@ -1402,6 +1454,35 @@ class CbCaracteristica : public NimBLECharacteristicCallbacks {
 static CbServidor cb_servidor;
 static CbCaracteristica cb_caracteristica;
 
+/* Anuncio: nome BM-XXXXXX e dados do fabricante FF FF 'B' 'M' <colonia> <versao>.
+ * O celular mostra a colonia na lista sem precisar conectar. */
+static void ble_anuncio() {
+  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
+  const bool estava = adv->isAdvertising();
+  if (estava) adv->stop();
+  NimBLEAdvertisementData dados_adv, resposta;
+  dados_adv.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
+  dados_adv.setName(ble_nome);
+  const char fab[6] = {(char)0xFF, (char)0xFF, 'B', 'M', (char)colonia_num, (char)23};
+  dados_adv.setManufacturerData(std::string(fab, sizeof(fab)));
+  resposta.setCompleteServices(NimBLEUUID(BLE_SERVICO));
+  adv->setAdvertisementData(dados_adv);
+  adv->setScanResponseData(resposta);
+  if (!ble_conectado) adv->start();
+}
+
+static void colonia_definir(uint8_t c) {
+  if (c > 12 || c == colonia_num) return;
+  colonia_num = c;
+  Preferences pref;
+  pref.begin("beemeter", false);
+  pref.putUChar("colonia", colonia_num);
+  pref.end();
+  Serial.printf("COLONIA: aparelho agora e da colonia %u\n", (unsigned)colonia_num);
+  carrossel_sujo = true;
+  if (ble_servidor) ble_anuncio();
+}
+
 static void ble_iniciar() {
   uint8_t mac[6];
   esp_read_mac(mac, ESP_MAC_BT);
@@ -1423,15 +1504,8 @@ static void ble_iniciar() {
   ch_cmd->setCallbacks(&cb_caracteristica);
   srv->start();
 
-  NimBLEAdvertising* adv = NimBLEDevice::getAdvertising();
-  NimBLEAdvertisementData dados_adv, resposta;
-  dados_adv.setFlags(BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP);
-  dados_adv.setName(ble_nome);
-  resposta.setCompleteServices(NimBLEUUID(BLE_SERVICO));
-  adv->setAdvertisementData(dados_adv);
-  adv->setScanResponseData(resposta);
-  adv->start();
-  Serial.printf("BLE: anunciando como %s\n", ble_nome);
+  ble_anuncio();
+  Serial.printf("BLE: anunciando como %s (colonia %u)\n", ble_nome, (unsigned)colonia_num);
 }
 
 static uint16_t ble_carga_max() {
@@ -1449,7 +1523,8 @@ static void ble_enviar_pacote() {
   if (tr_seq >= tr_fim && tr_off >= sizeof(Registro)) {
     pac[0] = 'F';
     memcpy(pac + 1, &tr_enviados, 4);
-    ch_dados->setValue(pac, 5);
+    memcpy(pac + 5, &tr_crc, 4);
+    ch_dados->setValue(pac, 9);
     ch_dados->notify();
     ble_transferindo = false;
     carrossel_sujo = true;
@@ -1472,6 +1547,7 @@ static void ble_enviar_pacote() {
     uint16_t pedaco = (uint16_t)(sizeof(Registro) - tr_off);
     if (pedaco > carga - n) pedaco = carga - n;
     memcpy(pac + n, ((const uint8_t*)&tr_reg) + tr_off, pedaco);
+    tr_crc = crc32_mais(tr_crc, pac + n, pedaco);
     n += pedaco;
     tr_off += pedaco;
   }
@@ -1517,8 +1593,21 @@ static const char* rodape_logos() {
   static char txt[40];
   if (ble_transferindo) return "ENVIANDO DADOS AO CELULAR";
   if (ble_conectado) return "CELULAR CONECTADO";
-  snprintf(txt, sizeof(txt), "%s  |  AMAZONIA BEE  |  IPE", ble_nome);
+  if (colonia_num) snprintf(txt, sizeof(txt), "COLONIA %02u  |  %s", (unsigned)colonia_num, ble_nome);
+  else snprintf(txt, sizeof(txt), "%s  |  SEM COLONIA", ble_nome);
   return txt;
+}
+
+/* PISCAR: tela inteira alternando laranja e verde com a colonia e o nome. */
+static void cena_identificar(GFXcanvas16& c, int16_t oy) {
+  const bool fase = (millis() / 500) % 2;
+  c.fillScreen(fase ? COR_MARCA_LARANJA : COR_IPE_VERDE);
+  char num[8];
+  if (colonia_num) snprintf(num, sizeof(num), "%02u", (unsigned)colonia_num);
+  else snprintf(num, sizeof(num), "--");
+  texto_centro(c, "COLONIA", PN_CX, oy + 8, 3, COR_BRANCO);
+  texto_centro(c, num, PN_CX, oy + 40, 7, COR_BRANCO);
+  texto_centro(c, ble_nome, PN_CX, oy + 104, 3, COR_BRANCO);
 }
 
 static uint16_t rodape_cor() { return ble_conectado ? COR_IPE_VERDE : COR_MARCA_MARROM; }
@@ -1660,6 +1749,8 @@ void setup() {
     pref.begin("beemeter", false);
     boot_num = (uint16_t)(pref.getUShort("boot", 0) + 1);
     pref.putUShort("boot", boot_num);
+    colonia_num = pref.getUChar("colonia", 0);
+    if (colonia_num > 12) colonia_num = 0;
     pref.end();
   }
   reg_ok = reg_iniciar();

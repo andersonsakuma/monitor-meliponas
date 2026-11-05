@@ -365,7 +365,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String versao() { return "3.0"; }
+        public String versao() { return "3.1"; }
 
         @JavascriptInterface
         public void bleBuscar(final String chave, final int segundos) {
@@ -381,6 +381,13 @@ public class MainActivity extends Activity {
                     long d = 0; try { d = Long.parseLong(desde); } catch (Exception e) { }
                     beemeter.baixar(chave, id, d, colonia);
                 } });
+            }});
+        }
+
+        @JavascriptInterface
+        public void bleIdentificar(final String chave, final String id) {
+            runOnUiThread(new Runnable() { public void run() {
+                comBluetooth(chave, new Runnable() { public void run() { beemeter.identificar(chave, id); } });
             }});
         }
 

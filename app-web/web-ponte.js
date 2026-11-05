@@ -151,16 +151,38 @@
     }).catch(function () { window.bleBuscaFim && bleBuscaFim(chave, []); });
   }
 
+  function crc32(b) {
+    var crc = 0xFFFFFFFF;
+    for (var i = 0; i < b.length; i++) {
+      crc ^= b[i];
+      for (var k = 0; k < 8; k++) crc = (crc >>> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+    return (~crc) >>> 0;
+  }
+  function escolherAparelho(id) {
+    return aparelhos[id] ? Promise.resolve(aparelhos[id])
+      : navigator.bluetooth.requestDevice({ filters: [{ name: id }], optionalServices: [SERV] });
+  }
+  function bleIdentificar(chave, id) {
+    if (!window.MM_WEB_BLE) { semBle(chave); return; }
+    var dev;
+    escolherAparelho(id).then(function (d) { aparelhos[id] = dev = d; return d.gatt.connect(); })
+      .then(function (g) { return g.getPrimaryService(SERV); })
+      .then(function (svc) { return svc.getCharacteristic(U(4)); })
+      .then(function (c) { var b = new TextEncoder().encode('PISCAR'); return c.writeValueWithResponse ? c.writeValueWithResponse(b) : c.writeValue(b); })
+      .then(function () { try { dev.gatt.disconnect(); } catch (x) {} window.bleIdentificado && bleIdentificado(chave, id); })
+      .catch(function () { try { dev && dev.gatt.disconnect(); } catch (x) {} bleErro(chave, 'Não foi possível conectar ao ' + id + '.'); });
+  }
   function texto(dv) { return new TextDecoder().decode(dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength)); }
 
   function bleBaixar(chave, id, desdeTxt, colonia) {
     if (!window.MM_WEB_BLE) { semBle(chave); return; }
     if (sessao) { bleErro(chave, 'Já há um download em andamento.'); return; }
     var desde = parseInt(desdeTxt, 10) || 0;
+    var colPedida = Math.abs(colonia), forcar = colonia < 0, erroColonia = null;
     var prog = function (t, p) { window.bleProgresso && bleProgresso(chave, t, p); };
     var s = sessao = { cancelado: false };
-    var pDev = aparelhos[id] ? Promise.resolve(aparelhos[id])
-      : navigator.bluetooth.requestDevice({ filters: [{ name: id }], optionalServices: [SERV] });
+    var pDev = escolherAparelho(id);
     prog('Escolha o aparelho ' + id + ' na lista…', 5);
     var gatt, info, agora, epoca, fluxo = [], tamFluxo = 0, esperados = 0, cDados, aoChegar;
     pDev.then(function (d) {
@@ -181,16 +203,29 @@
           if (u8[0] === 68) {             // 'D'
             fluxo.push(u8.slice(1)); tamFluxo += u8.length - 1;
             if (esperados) prog('Baixando registros: ' + Math.floor(tamFluxo / 32) + ' de ' + esperados, 40 + Math.round(55 * Math.min(1, tamFluxo / 32 / esperados)));
-          } else if (u8[0] === 70) ok();  // 'F'
+          } else if (u8[0] === 70) {      // 'F' + quantidade + CRC32
+            if (u8.length >= 9) {
+              var crcAparelho = (u8[5] | u8[6] << 8 | u8[7] << 16 | u8[8] << 24) >>> 0;
+              var junto = new Uint8Array(tamFluxo), o2 = 0;
+              fluxo.forEach(function (p) { junto.set(p, o2); o2 += p.length; });
+              if (crc32(junto) !== crcAparelho) { s.falhaCrc = true; }
+            }
+            ok();
+          }
         };
         cDados.addEventListener('characteristicvaluechanged', aoChegar);
       });
       return cDados.startNotifications().then(function () { return cInfo.readValue(); }).then(function (v) {
         info = JSON.parse(texto(v));
         epoca = Math.floor(Date.now() / 1000);
+        var colAparelho = info.colonia || 0;
+        if (colPedida && colAparelho && colAparelho !== colPedida && !forcar) {
+          erroColonia = colAparelho;
+          throw new Error('Este aparelho está gravado como colônia ' + colAparelho + ', não ' + colPedida + '. Confira se está na caixa certa.');
+        }
         if (desde > info.proximo) desde = 0;
         esperados = Math.max(0, info.proximo - Math.max(desde, info.primeiro));
-        return escrever('HORA ' + epoca);
+        return escrever('HORA ' + epoca + (colPedida && (info.colonia || 0) !== colPedida ? ' ' + colPedida : ''));
       }).then(function () { return cAgora.readValue(); }).then(function (v) {
         agora = JSON.parse(texto(v));
         prog(esperados ? 'Baixando ' + esperados + ' registros…' : 'Sem registros novos. Concluindo…', 40);
@@ -202,6 +237,7 @@
       });
     }).then(function () {
       if (s.cancelado) return;
+      if (s.falhaCrc) throw new Error('Os dados chegaram com falha. Toque em Tentar de novo.');
       var b = new Uint8Array(tamFluxo), o = 0;
       fluxo.forEach(function (p) { b.set(p, o); o += p.length; });
       var dv = new DataView(b.buffer), n = Math.floor(b.length / 32), regs = [], pri = -1, ult = -1, mIni = 0, mFim = 0;
@@ -221,7 +257,7 @@
         .then(function () { if (lotes.indexOf(nome) < 0) lotes.push(nome); }) : Promise.resolve();
       return salvar.then(function () {
         encerrar();
-        window.bleConcluido && bleConcluido(chave, { id: id, fw: info.fw, boot: info.boot, intervalo: info.intervalo, tara: info.tara, proximo: info.proximo,
+        window.bleConcluido && bleConcluido(chave, { id: id, colonia: colPedida, fw: info.fw, boot: info.boot, intervalo: info.intervalo, tara: info.tara, proximo: info.proximo,
           n: n, primeiro: pri, ultimo: ult, mIni: mIni, mFim: mFim, lote: nome, agora: agora, quando: epoca });
       });
     }).catch(function (e) {
@@ -229,6 +265,7 @@
       encerrar();
       if (cancelado) return;
       var msg = e && e.name === 'NotFoundError' ? 'Nenhum aparelho escolhido. Toque de novo e escolha ' + id + ' na lista.' : (e && e.message ? e.message : 'Falha na conexão com o aparelho.');
+      if (erroColonia) { js(function () { window.bleErro && window.bleErro(chave, msg, 'colonia', erroColonia); }); return; }
       bleErro(chave, msg);
     });
     function encerrar() {
@@ -265,9 +302,10 @@
       var c = navigator.connection;
       return c && c.type === 'cellular' ? 'movel' : 'wifi';
     },
-    versao: function () { return '3.0-web'; },
+    versao: function () { return '3.1-web'; },
     bleBuscar: function (c) { bleBuscar(c); },
     bleBaixar: bleBaixar,
+    bleIdentificar: bleIdentificar,
     bleCancelar: function () { if (sessao) { sessao.cancelado = true; try { if (sessao.dev && sessao.dev.gatt.connected) sessao.dev.gatt.disconnect(); } catch (x) {} sessao = null; } },
     lotesPendentes: function () { return JSON.stringify(lotes); },
     lerLote: function (nome) { return tx('lotes', 'readonly', function (s) { return s.get(nome); }).then(function (v) { return v || ''; }); },

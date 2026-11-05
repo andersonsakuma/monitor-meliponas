@@ -95,6 +95,8 @@ public class BeeMeter {
                 try {
                     JSONObject o = new JSONObject();
                     o.put("id", nome); o.put("rssi", r.getRssi());
+                    byte[] fab = r.getScanRecord() != null ? r.getScanRecord().getManufacturerSpecificData(0xFFFF) : null;
+                    if (fab != null && fab.length >= 3 && fab[0] == 'B' && fab[1] == 'M') o.put("colonia", fab[2] & 0xFF);
                     achados.put(nome, o);
                     if (novo) saida.js("window.bleAchado && bleAchado(" + q(chave) + "," + o.toString() + ")");
                 } catch (Exception e) { }
@@ -130,15 +132,25 @@ public class BeeMeter {
     private Sessao atual;
 
     public void baixar(final String chave, final String id, final long desde, final int colonia) {
-        if (atual != null) { erro(chave, "Já há um download em andamento."); return; }
+        iniciar(chave, id, desde, colonia, false);
+    }
+
+    /** Faz a tela do aparelho piscar com a colônia e o nome, para conferir a caixa. */
+    public void identificar(final String chave, final String id) {
+        iniciar(chave, id, 0, 0, true);
+    }
+
+    private void iniciar(final String chave, final String id, final long desde, final int colonia, final boolean piscar) {
+        if (atual != null) { erro(chave, "Já há uma conexão em andamento."); return; }
         progresso(chave, "Procurando " + id + "…", 5);
         buscar(chave, 15, id, new Achou() {
             public void achou(BluetoothDevice d) {
                 atual = new Sessao(chave, id, desde, colonia, d);
+                atual.piscar = piscar;
                 atual.conectar();
             }
             public void naoAchou() {
-                erro(chave, "Aparelho " + id + " não encontrado. Chegue mais perto da caixa, confira se a tela do aparelho está acesa e tente de novo.");
+                erro(chave, "Aparelho " + id + " não encontrado. Chegue mais perto da caixa e confira se a tela está acesa. Se outro celular estiver conectado a ele, espere terminar.");
             }
         });
     }
@@ -163,7 +175,7 @@ public class BeeMeter {
         final BluetoothDevice dispositivo;
         BluetoothGatt gatt;
         int etapa = 0, tentativas = 0;
-        boolean terminado = false;
+        boolean terminado = false, piscar = false;
         JSONObject info, agora;
         long epocaCelular;
         final ByteArrayOutputStream fluxo = new ByteArrayOutputStream();
@@ -183,6 +195,13 @@ public class BeeMeter {
             vivo();
             try { gatt = dispositivo.connectGatt(ctx, false, this, BluetoothDevice.TRANSPORT_LE); }
             catch (SecurityException e) { encerrar("Sem permissão para usar o Bluetooth."); }
+        }
+
+        void encerrarSilencioso() {
+            terminado = true;
+            h.removeCallbacks(vigia);
+            try { if (gatt != null) { gatt.disconnect(); gatt.close(); } } catch (Exception e) { }
+            atual = null;
         }
 
         void encerrar(String msgErro) {
@@ -235,6 +254,7 @@ public class BeeMeter {
             if (terminado) return;
             vivo();
             if (g.getService(SERVICO) == null) { encerrar("Este aparelho não tem o firmware BeeMeter 2.2 ou mais novo."); return; }
+            if (piscar) { etapa = 9; escrever("PISCAR"); return; }
             etapa = 1;
             if (!g.requestMtu(247)) ativarNotificacoes();
         }
@@ -273,11 +293,19 @@ public class BeeMeter {
                 if (C_INFO.equals(c.getUuid())) {
                     info = new JSONObject(txt);
                     epocaCelular = System.currentTimeMillis() / 1000L;
+                    int colAparelho = info.optInt("colonia", 0), colPedida = Math.abs(colonia);
+                    boolean forcar = colonia < 0;
+                    if (colPedida > 0 && colAparelho > 0 && colAparelho != colPedida && !forcar) {
+                        final int ca = colAparelho;
+                        encerrarSilencioso();
+                        saida.js("window.bleErro && bleErro(" + q(chave) + "," + q("Este aparelho está gravado como colônia " + ca + ", não " + colPedida + ". Confira se está na caixa certa.") + ",'colonia'," + ca + ")");
+                        return;
+                    }
                     long proximo = info.optLong("proximo", 1), primeiro = info.optLong("primeiro", 1);
                     if (desde > proximo) desde = 0;  /* registro do aparelho foi refeito */
                     esperados = Math.max(0, proximo - Math.max(desde, primeiro));
                     etapa = 3;
-                    escrever("HORA " + epocaCelular);
+                    escrever("HORA " + epocaCelular + (colPedida > 0 && colAparelho != colPedida ? " " + colPedida : ""));
                 } else if (C_AGORA.equals(c.getUuid())) {
                     agora = new JSONObject(txt);
                     etapa = 5;
@@ -293,6 +321,12 @@ public class BeeMeter {
         public void onCharacteristicWrite(BluetoothGatt g, BluetoothGattCharacteristic c, int status) {
             if (terminado) return;
             vivo();
+            if (etapa == 9) {
+                final String js = "window.bleIdentificado && bleIdentificado(" + q(chave) + "," + q(id) + ")";
+                encerrar(null);
+                saida.js(js);
+                return;
+            }
             if (etapa == 3) { etapa = 4; ler(C_AGORA); }
         }
 
@@ -313,6 +347,12 @@ public class BeeMeter {
                     progresso(chave, "Baixando registros: " + n + " de " + esperados, (int) (40 + 55 * Math.min(1.0, n / (double) esperados)));
                 }
             } else if (v[0] == 'F') {
+                if (v.length >= 9) {
+                    long crcAparelho = ByteBuffer.wrap(v, 5, 4).order(ByteOrder.LITTLE_ENDIAN).getInt() & 0xFFFFFFFFL;
+                    java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+                    crc.update(fluxo.toByteArray());
+                    if (crc.getValue() != crcAparelho) { encerrar("Os dados chegaram com falha. Toque em Tentar de novo."); return; }
+                }
                 concluir();
             }
         }
@@ -372,6 +412,7 @@ public class BeeMeter {
                 }
                 JSONObject res = new JSONObject();
                 res.put("id", id);
+                res.put("colonia", Math.abs(colonia));
                 res.put("fw", info.optString("fw"));
                 res.put("boot", info.optLong("boot"));
                 res.put("intervalo", info.optLong("intervalo"));

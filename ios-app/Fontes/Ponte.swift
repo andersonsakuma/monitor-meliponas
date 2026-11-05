@@ -41,6 +41,7 @@ final class Ponte {
         case "versao": return (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "3.0"
         case "bleBuscar": bee.buscar(chave: s(0), segundos: max(3, n(1)))
         case "bleBaixar": bee.baixar(chave: s(0), id: s(1), desde: Int64(s(2)) ?? 0, colonia: n(3))
+        case "bleIdentificar": bee.identificar(chave: s(0), id: s(1))
         case "bleCancelar": bee.cancelar()
         case "lotesPendentes": return bee.lotesPendentes()
         case "lerLote": return bee.lerLote(nome: s(0))

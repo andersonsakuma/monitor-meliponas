@@ -99,7 +99,7 @@ final class TelaPrincipal: UIViewController, WKUIDelegate, WKNavigationDelegate 
         return r == null ? '' : r;
       }
       var nomes = ['compartilhar','tirarFoto','escolherFoto','iniciarAudio','finalizarAudio','tocarAudio',
-        'pararReproducao','miniatura','lerMidiaBase64','apagarMidia','rede','versao','bleBuscar','bleBaixar',
+        'pararReproducao','miniatura','lerMidiaBase64','apagarMidia','rede','versao','bleBuscar','bleBaixar','bleIdentificar',
         'bleCancelar','lotesPendentes','lerLote','apagarLote'];
       var A = {};
       nomes.forEach(function(n){ A[n] = function(){ return chamar(n, arguments); }; });

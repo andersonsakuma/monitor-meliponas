@@ -9,7 +9,7 @@ Os monitores registram no celular as visitas semanais às 12 colônias, com foto
 | Aplicativo Android | `app-android/` | Registro das visitas, fotos, áudios, download dos aparelhos por Bluetooth e sincronização. Funciona sem internet. |
 | Versão para navegador | `app-web/` | As mesmas telas no navegador (iPhone, Android ou computador), publicadas em `andersonsakuma.github.io/monitor-meliponas/app`. Funciona sem internet depois de adicionada à Tela de Início. Bluetooth com o BeeMeter no Chrome e, no iPhone, no navegador Bluefy. |
 | Aplicativo iOS | `ios-app/` | Mesmo aplicativo para iPhone e iPad (mesmas telas, Bluetooth, câmera e áudio nativos). Instalação pelo TestFlight. Ver `ios-app/LEIA-ME.md`. |
-| Firmware do aparelho | `firmware/` | BeeMeter 2.2.0-BLE (ESP32): sensores, tela, registro de 31 dias e Bluetooth. Ver `firmware/PROTOCOLO_BLE.md`. |
+| Firmware do aparelho | `firmware/` | BeeMeter 2.3.0-BLE (ESP32): sensores, tela, registro de 31 dias, Bluetooth e proteções para 12 aparelhos lado a lado. Ver `firmware/PROTOCOLO_BLE.md`. |
 | Banco de dados | `backend/` | Tabelas, regras de acesso, função de sincronização e armazenamento de arquivos (Supabase). |
 | Painel da equipe | `painel/` | Visão geral, mapa semanal das colônias, visitas, fotos e áudios, problemas e planilha. |
 | Logotipos | `logos/` | `ipe-fis.png` e `amazonia-bee.png`, usados no aplicativo e no painel. |
