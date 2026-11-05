@@ -49,12 +49,103 @@ public class BeeMeter {
     private final Saida saida;
     private final Handler h = new Handler(Looper.getMainLooper());
     private final File pastaLotes;
+    private final File arqHistorico;
+    static final long INTERVALO_VIVO_MS = 10000, LIMITE_VIVO_MS = 30 * 60 * 1000;
 
     public BeeMeter(Context ctx, Saida saida) {
         this.ctx = ctx;
         this.saida = saida;
         this.pastaLotes = new File(ctx.getFilesDir(), "lotes");
         if (!pastaLotes.exists()) pastaLotes.mkdirs();
+        File ph = new File(ctx.getFilesDir(), "historico");
+        if (!ph.exists()) ph.mkdirs();
+        this.arqHistorico = new File(ph, "historico.csv");
+    }
+
+    /* ------------------------------------------- histórico permanente */
+    /* Uma linha por medida, nunca apagada:
+       momento;colonia;aparelho;origem(r=registro do aparelho, v=ao vivo);seq;t;ur;lux;tc1;tc2;tc3;peso */
+    static final String CABECALHO = "momento_epoca;data_hora;colonia;aparelho;origem;seq;temp_amb;umidade;lux;tc_fundo;tc_divisao;tc_melgueira;peso_kg";
+
+    static String n(Object o) { return (o == null || o == JSONObject.NULL) ? "" : String.valueOf(o); }
+
+    synchronized void anexarHistorico(StringBuilder linhas) {
+        if (linhas.length() == 0) return;
+        try {
+            FileOutputStream fo = new FileOutputStream(arqHistorico, true);
+            fo.write(linhas.toString().getBytes("UTF-8"));
+            fo.close();
+        } catch (Exception e) { }
+    }
+
+    static String linhaHistorico(long m, int col, String ap, String origem, long seq, JSONObject r) {
+        return m + ";" + col + ";" + ap + ";" + origem + ";" + (seq >= 0 ? String.valueOf(seq) : "") + ";" +
+            n(r.opt("t")) + ";" + n(r.opt("ur")) + ";" + n(r.opt("lux")) + ";" + n(r.opt("tc1")) + ";" +
+            n(r.opt("tc2")) + ";" + n(r.opt("tc3")) + ";" + n(r.opt("p")) + "\n";
+    }
+
+    /** Médias por hora: hora;colonia;n;t;nt;ur;nur;lux;nlux;tc1;ntc1;tc2;ntc2;tc3;ntc3;peso;npeso;pmin;pmax */
+    public synchronized String historico(int colonia, long desde) {
+        java.util.TreeMap<String, double[]> ag = new java.util.TreeMap<String, double[]>();
+        try {
+            if (!arqHistorico.exists()) return "";
+            java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(arqHistorico), "UTF-8"));
+            String l;
+            while ((l = br.readLine()) != null) {
+                String[] c = l.split(";", -1);
+                if (c.length < 12) continue;
+                long m; int col;
+                try { m = Long.parseLong(c[0]); col = Integer.parseInt(c[1]); } catch (Exception e) { continue; }
+                if (m < desde || col <= 0 || (colonia > 0 && col != colonia)) continue;
+                long hora = (m / 3600) * 3600;
+                String k = String.format(java.util.Locale.US, "%012d;%02d", hora, col);
+                double[] a = ag.get(k);
+                if (a == null) { a = new double[17]; a[15] = Double.MAX_VALUE; a[16] = -Double.MAX_VALUE; ag.put(k, a); }
+                a[0]++;
+                for (int i = 0; i < 7; i++) {
+                    String v = c[5 + i];
+                    if (v.length() == 0) continue;
+                    try { double x = Double.parseDouble(v); a[1 + i * 2] += x; a[2 + i * 2]++; if (i == 6) { a[15] = Math.min(a[15], x); a[16] = Math.max(a[16], x); } } catch (Exception e) { }
+                }
+            }
+            br.close();
+        } catch (Exception e) { return ""; }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, double[]> e : ag.entrySet()) {
+            String[] k = e.getKey().split(";");
+            double[] a = e.getValue();
+            sb.append(Long.parseLong(k[0])).append(';').append(Integer.parseInt(k[1])).append(';').append((long) a[0]);
+            for (int i = 0; i < 7; i++) {
+                sb.append(';');
+                if (a[2 + i * 2] > 0) sb.append(String.format(java.util.Locale.US, "%.3f", a[1 + i * 2] / a[2 + i * 2]));
+                sb.append(';').append((long) a[2 + i * 2]);
+            }
+            sb.append(';').append(a[14] > 0 ? String.format(java.util.Locale.US, "%.3f", a[15]) : "");
+            sb.append(';').append(a[14] > 0 ? String.format(java.util.Locale.US, "%.3f", a[16]) : "");
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    /** CSV completo, com cabeçalho e data legível, para guardar fora do aplicativo. */
+    public synchronized void exportarCsv(java.io.OutputStream out) throws Exception {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale.US);
+        out.write(("\uFEFF" + CABECALHO + "\n").getBytes("UTF-8"));
+        if (!arqHistorico.exists()) return;
+        java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(arqHistorico), "UTF-8"));
+        String l;
+        StringBuilder sb = new StringBuilder();
+        while ((l = br.readLine()) != null) {
+            int i = l.indexOf(';');
+            if (i < 0) continue;
+            String data;
+            try { data = f.format(new java.util.Date(Long.parseLong(l.substring(0, i)) * 1000L)); } catch (Exception e) { data = ""; }
+            String resto = l.substring(i + 1).replace(";v;", ";ao vivo;").replace(";r;", ";registro;").replace('.', ',');
+            sb.append(l, 0, i).append(';').append(data).append(';').append(resto).append('\n');
+            if (sb.length() > 65536) { out.write(sb.toString().getBytes("UTF-8")); sb.setLength(0); }
+        }
+        br.close();
+        out.write(sb.toString().getBytes("UTF-8"));
     }
 
     static String q(String s) {
@@ -103,6 +194,7 @@ public class BeeMeter {
             }
             @Override
             public void onScanFailed(int codigo) {
+                atualPendente = null;
                 if (!fim[0]) { fim[0] = true; erro(chave, "Falha ao procurar aparelhos (código " + codigo + ")."); }
             }
         };
@@ -135,30 +227,49 @@ public class BeeMeter {
         iniciar(chave, id, desde, colonia, false);
     }
 
+    /** Baixa os registros novos e continua conectado lendo o aparelho a cada 10 s, até parar(). */
+    public void aoVivo(final String chave, final String id, final long desde, final int colonia, final String visita) {
+        iniciar(chave, id, desde, colonia, false);
+        if (atualPendente != null) { atualPendente.aoVivo = true; atualPendente.visita = visita; }
+    }
+
+    public void parar() {
+        pararBusca();
+        if (atual != null) atual.encerrar(null);
+        atualPendente = null;
+    }
+
     /** Faz a tela do aparelho piscar com a colônia e o nome, para conferir a caixa. */
     public void identificar(final String chave, final String id) {
         iniciar(chave, id, 0, 0, true);
     }
 
+    private Sessao atualPendente;
+
     private void iniciar(final String chave, final String id, final long desde, final int colonia, final boolean piscar) {
-        if (atual != null) { erro(chave, "Já há uma conexão em andamento."); return; }
+        if (atual != null || atualPendente != null) { erro(chave, "Já há uma conexão em andamento."); return; }
+        final Sessao nova = new Sessao(chave, id, desde, colonia, null);
+        nova.piscar = piscar;
+        atualPendente = nova;
         progresso(chave, "Procurando " + id + "…", 5);
         buscar(chave, 15, id, new Achou() {
             public void achou(BluetoothDevice d) {
-                atual = new Sessao(chave, id, desde, colonia, d);
-                atual.piscar = piscar;
+                if (atualPendente != nova) return;
+                atualPendente = null;
+                nova.dispositivo = d;
+                atual = nova;
                 atual.conectar();
             }
             public void naoAchou() {
+                if (atualPendente != nova) return;
+                atualPendente = null;
                 erro(chave, "Aparelho " + id + " não encontrado. Chegue mais perto da caixa e confira se a tela está acesa. Se outro celular estiver conectado a ele, espere terminar.");
             }
         });
+        if (buscaCb == null) atualPendente = null;  /* a busca nem começou (Bluetooth desligado) */
     }
 
-    public void cancelar() {
-        pararBusca();
-        if (atual != null) atual.encerrar(null);
-    }
+    public void cancelar() { parar(); }
 
     void progresso(String chave, String texto, int pct) {
         saida.js("window.bleProgresso && bleProgresso(" + q(chave) + "," + q(texto) + "," + pct + ")");
@@ -172,7 +283,11 @@ public class BeeMeter {
         final String chave, id;
         long desde;
         final int colonia;
-        final BluetoothDevice dispositivo;
+        BluetoothDevice dispositivo;
+        boolean aoVivo = false;
+        String visita = "";
+        long inicioVivo = 0;
+        final JSONArray vivoBuffer = new JSONArray();
         BluetoothGatt gatt;
         int etapa = 0, tentativas = 0;
         boolean terminado = false, piscar = false;
@@ -181,7 +296,7 @@ public class BeeMeter {
         final ByteArrayOutputStream fluxo = new ByteArrayOutputStream();
         long esperados = 0;
         final Runnable vigia = new Runnable() { public void run() {
-            encerrar("O aparelho parou de responder. Chegue mais perto e tente de novo.");
+            encerrar(etapa >= 20 ? "O aparelho parou de responder. A leitura ao vivo foi encerrada." : "O aparelho parou de responder. Chegue mais perto e tente de novo.");
         }};
 
         Sessao(String chave, String id, long desde, int colonia, BluetoothDevice d) {
@@ -208,9 +323,56 @@ public class BeeMeter {
             if (terminado) return;
             terminado = true;
             h.removeCallbacks(vigia);
+            h.removeCallbacks(lerVivo);
             try { if (gatt != null) { gatt.disconnect(); gatt.close(); } } catch (Exception e) { }
             atual = null;
-            if (msgErro != null) erro(chave, msgErro);
+            if (etapa >= 20) {
+                salvarVivo();
+                saida.js("window.bleVivoFim && bleVivoFim(" + q(chave) + "," + q(msgErro == null ? "" : msgErro) + ")");
+            } else if (msgErro != null) erro(chave, msgErro);
+        }
+
+        final Runnable lerVivo = new Runnable() { public void run() {
+            if (terminado) return;
+            if (System.currentTimeMillis() - inicioVivo > LIMITE_VIVO_MS) { encerrar("Leitura ao vivo encerrada após 30 minutos."); return; }
+            ler(C_AGORA);
+        }};
+
+        void registrarVivo(JSONObject a) {
+            try {
+                long m = System.currentTimeMillis() / 1000L;
+                JSONArray tc = a.optJSONArray("tc");
+                JSONObject r = new JSONObject();
+                r.put("m", m);
+                r.put("t", a.opt("t")); r.put("ur", a.opt("ur")); r.put("lux", a.opt("lux"));
+                r.put("tc1", tc != null ? tc.opt(0) : JSONObject.NULL);
+                r.put("tc2", tc != null ? tc.opt(1) : JSONObject.NULL);
+                r.put("tc3", tc != null ? tc.opt(2) : JSONObject.NULL);
+                r.put("p", a.opt("peso"));
+                vivoBuffer.put(r);
+                StringBuilder sb = new StringBuilder();
+                sb.append(linhaHistorico(m, Math.abs(colonia), id, "v", -1, r));
+                anexarHistorico(sb);
+                JSONObject env = new JSONObject(a.toString());
+                env.put("m", m);
+                env.put("n", vivoBuffer.length());
+                saida.js("window.bleLeitura && bleLeitura(" + q(chave) + "," + env.toString() + ")");
+            } catch (Exception e) { }
+        }
+
+        void salvarVivo() {
+            if (vivoBuffer.length() == 0) return;
+            try {
+                JSONObject lote = new JSONObject();
+                lote.put("tipo", "vivo");
+                lote.put("aparelho", id);
+                lote.put("colonia", Math.abs(colonia));
+                lote.put("visita", visita);
+                lote.put("registros", vivoBuffer);
+                FileOutputStream fo = new FileOutputStream(new File(pastaLotes, "vivo_" + id + "_" + (System.currentTimeMillis() / 1000L) + ".json"));
+                fo.write(lote.toString().getBytes("UTF-8"));
+                fo.close();
+            } catch (Exception e) { }
         }
 
         BluetoothGattCharacteristic car(UUID u) {
@@ -240,6 +402,7 @@ public class BeeMeter {
                 h.postDelayed(new Runnable() { public void run() { if (!terminado) g.discoverServices(); } }, 400);
             } else if (novo == BluetoothProfile.STATE_DISCONNECTED) {
                 try { g.close(); } catch (Exception e) { }
+                if (etapa >= 20) { encerrar("A conexão com o aparelho caiu. A leitura ao vivo foi encerrada."); return; }
                 if (etapa < 3 && tentativas < 2) {
                     tentativas++;
                     h.postDelayed(new Runnable() { public void run() { if (!terminado) conectar(); } }, 800);
@@ -306,6 +469,9 @@ public class BeeMeter {
                     esperados = Math.max(0, proximo - Math.max(desde, primeiro));
                     etapa = 3;
                     escrever("HORA " + epocaCelular + (colPedida > 0 && colAparelho != colPedida ? " " + colPedida : ""));
+                } else if (C_AGORA.equals(c.getUuid()) && etapa >= 20) {
+                    registrarVivo(new JSONObject(txt));
+                    h.postDelayed(lerVivo, INTERVALO_VIVO_MS);
                 } else if (C_AGORA.equals(c.getUuid())) {
                     agora = new JSONObject(txt);
                     etapa = 5;
@@ -364,6 +530,7 @@ public class BeeMeter {
                 ByteBuffer bb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN);
                 long bootInfo = info.optLong("boot", -1), upInfo = info.optLong("up", 0);
                 JSONArray regs = new JSONArray();
+                StringBuilder hist = new StringBuilder();
                 long primeiroSeq = -1, ultimoSeq = -1, mIni = 0, mFim = 0;
                 for (int i = 0; i < n; i++) {
                     bb.position(i * TAM_REGISTRO);
@@ -393,6 +560,7 @@ public class BeeMeter {
                     r.put("tc3", (val & 0x10) != 0 ? tc3 / 4.0 : JSONObject.NULL);
                     r.put("p", (val & 0x20) != 0 ? pesoG / 1000.0 : JSONObject.NULL);
                     regs.put(r);
+                    if (momento > 0) hist.append(linhaHistorico(momento, Math.abs(colonia), id, "r", seq, r));
                     if (primeiroSeq < 0) primeiroSeq = seq;
                     ultimoSeq = seq;
                     if (momento > 0) { if (mIni == 0) mIni = momento; mFim = momento; }
@@ -426,9 +594,19 @@ public class BeeMeter {
                 res.put("lote", nomeLote == null ? JSONObject.NULL : nomeLote);
                 res.put("agora", agora);
                 res.put("quando", epocaCelular);
+                anexarHistorico(hist);
                 final String js = "window.bleConcluido && bleConcluido(" + q(chave) + "," + res.toString() + ")";
-                encerrar(null);
-                saida.js(js);
+                if (aoVivo) {
+                    saida.js(js);
+                    etapa = 20;
+                    inicioVivo = System.currentTimeMillis();
+                    vivo();
+                    registrarVivo(agora);
+                    h.postDelayed(lerVivo, INTERVALO_VIVO_MS);
+                } else {
+                    encerrar(null);
+                    saida.js(js);
+                }
             } catch (Exception e) {
                 encerrar("Erro ao guardar os registros: " + e.getMessage());
             }

@@ -319,3 +319,62 @@ from public.medicoes
 where momento is not null and colonia is not null
 group by colonia, (momento at time zone 'America/Manaus')::date;
 grant select on public.medicoes_diarias to authenticated;
+
+-- =====================================================================
+-- Leituras ao vivo: o aplicativo lê o aparelho a cada 10 s enquanto o
+-- monitor preenche a ficha da colônia (aplicativo 3.2)
+-- =====================================================================
+create table if not exists public.leituras_vivo (
+  aparelho     text not null references public.aparelhos(id),
+  momento      timestamptz not null,
+  colonia      int check (colonia between 1 and 12),
+  visita_id    text,
+  temp_amb     numeric(5,1),
+  umidade      numeric(5,1),
+  lux          int,
+  tc_fundo     numeric(6,2),
+  tc_divisao   numeric(6,2),
+  tc_melgueira numeric(6,2),
+  peso_kg      numeric(8,3),
+  recebido_em  timestamptz not null default now(),
+  primary key (aparelho, momento)
+);
+create index if not exists leituras_vivo_colonia_idx on public.leituras_vivo (colonia, momento);
+alter table public.leituras_vivo enable row level security;
+drop policy if exists "equipe le" on public.leituras_vivo;
+create policy "equipe le" on public.leituras_vivo for select to authenticated using (true);
+grant select on public.leituras_vivo to authenticated;
+
+create or replace function public.enviar_leituras_vivo(p jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ap text := p->>'aparelho';
+  col int := nullif(p->>'colonia','')::int;
+  n int := 0;
+begin
+  if not exists (select 1 from config where chave = 'codigo_projeto' and valor = coalesce(p->>'codigo','')) then
+    raise exception 'Código do projeto inválido' using errcode = '28000';
+  end if;
+  if ap is null or ap !~ '^BM-[0-9A-F]{6}$' then
+    raise exception 'Aparelho inválido';
+  end if;
+  insert into aparelhos (id, colonia) values (ap, col) on conflict (id) do nothing;
+  insert into leituras_vivo (aparelho, momento, colonia, visita_id, temp_amb, umidade, lux,
+                             tc_fundo, tc_divisao, tc_melgueira, peso_kg)
+  select ap, to_timestamp((r->>'m')::bigint), col, nullif(p->>'visita',''),
+         nullif(r->>'t','')::numeric, nullif(r->>'ur','')::numeric, nullif(r->>'lux','')::numeric::int,
+         nullif(r->>'tc1','')::numeric, nullif(r->>'tc2','')::numeric, nullif(r->>'tc3','')::numeric,
+         nullif(r->>'p','')::numeric
+  from jsonb_array_elements(coalesce(p->'registros','[]'::jsonb)) r
+  where jsonb_typeof(r->'m') = 'number'
+  on conflict (aparelho, momento) do nothing;
+  get diagnostics n = row_count;
+  return jsonb_build_object('novas', n);
+end;
+$$;
+revoke all on function public.enviar_leituras_vivo(jsonb) from public;
+grant execute on function public.enviar_leituras_vivo(jsonb) to anon, authenticated;

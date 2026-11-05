@@ -19,7 +19,14 @@ Os monitores registram no celular as visitas semanais às 12 colônias, com foto
 
 Cada colônia tem um aparelho BeeMeter que mede temperatura e umidade do ambiente, luz, três temperaturas dentro da caixa (fundo, divisão e melgueira) e o peso da colmeia, e guarda um registro a cada 10 minutos por até 31 dias. Na visita, o monitor abre a colônia no aplicativo e toca em **Baixar dados do aparelho**: o celular conecta por Bluetooth, acerta o relógio do aparelho, mostra as medidas do momento e baixa só os registros novos. As medições vão para a tabela `medicoes` e aparecem no painel, na aba **Medições**.
 
-## Como funciona a sincronização
+## Leitura ao vivo e painel de acompanhamento (aplicativo 3.2)
+
+- Ao abrir a ficha de uma colônia, o aplicativo conecta ao aparelho, baixa os registros novos e continua lendo as medidas **a cada 10 segundos** enquanto a ficha estiver aberta (até 30 minutos).
+- Tudo o que é medido (registros do aparelho e leituras ao vivo) fica num **histórico permanente no celular, que nunca é apagado**, mesmo depois de enviado ao servidor. Pode ser baixado como planilha CSV na aba **Painel** ou em **Ajustes**.
+- As leituras ao vivo vão para a tabela `leituras_vivo` do banco.
+- A aba **Painel** mostra o peso de cada colônia (produção), as temperaturas do ninho e a umidade, com **avisos de anomalias**: queda de peso sem colheita anotada, peso parado por 7 dias, ninho acima de 36 °C ou abaixo de 22 °C, ninho acompanhando a temperatura de fora, umidade acima de 90 %, sensor sem leitura e aparelho sem registrar. Os problemas aparecem também numa mensagem na tela.
+- Os limites dos avisos ficam na constante `LIM` de `app-android/assets/index.html` e devem ser ajustados com os dados do primeiro mês.
+
 
 1. Durante a visita, tudo é gravado no celular, sem precisar de internet.
 2. Ao tocar em **Terminar visita**, o aplicativo tenta enviar os registros.

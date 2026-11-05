@@ -10,11 +10,17 @@
 
   /* ---------------- armazenamento (IndexedDB) ---------------- */
   var bancoP = new Promise(function (ok, falha) {
-    var req = indexedDB.open('monitor-meliponas', 1);
-    req.onupgradeneeded = function () {
+    var req = indexedDB.open('monitor-meliponas', 2);
+    req.onupgradeneeded = function (ev) {
       var db = req.result;
-      db.createObjectStore('midias');   // id -> {tipo, blob, mini}
-      db.createObjectStore('lotes');    // nome -> texto JSON
+      if (ev.oldVersion < 1) {
+        db.createObjectStore('midias');   // id -> {tipo, blob, mini}
+        db.createObjectStore('lotes');    // nome -> texto JSON
+      }
+      if (ev.oldVersion < 2) {            // histórico permanente: nunca apagado
+        var h = db.createObjectStore('historico', { autoIncrement: true });
+        h.createIndex('m', 'm');
+      }
     };
     req.onsuccess = function () { ok(req.result); };
     req.onerror = function () { falha(req.error); };
@@ -175,7 +181,14 @@
   }
   function texto(dv) { return new TextDecoder().decode(dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength)); }
 
-  function bleBaixar(chave, id, desdeTxt, colonia) {
+  var vivoAtual = null;
+  function bleAoVivo(chave, id, desdeTxt, colonia, visita) { bleBaixar(chave, id, desdeTxt, colonia, { aoVivo: true, visita: visita }); }
+  function bleParar() {
+    if (vivoAtual) { vivoAtual.parar(''); return; }
+    if (sessao) { sessao.cancelado = true; try { if (sessao.dev && sessao.dev.gatt.connected) sessao.dev.gatt.disconnect(); } catch (x) {} sessao = null; }
+  }
+  function bleBaixar(chave, id, desdeTxt, colonia, opcoes) {
+    opcoes = opcoes || {};
     if (!window.MM_WEB_BLE) { semBle(chave); return; }
     if (sessao) { bleErro(chave, 'Já há um download em andamento.'); return; }
     var desde = parseInt(desdeTxt, 10) || 0;
@@ -184,7 +197,7 @@
     var s = sessao = { cancelado: false };
     var pDev = escolherAparelho(id);
     prog('Escolha o aparelho ' + id + ' na lista…', 5);
-    var gatt, info, agora, epoca, fluxo = [], tamFluxo = 0, esperados = 0, cDados, aoChegar;
+    var gatt, info, agora, epoca, fluxo = [], tamFluxo = 0, esperados = 0, cDados, aoChegar, cAgoraVivo;
     pDev.then(function (d) {
       aparelhos[id] = d; s.dev = d;
       prog('Conectando ao ' + id + '…', 15);
@@ -195,7 +208,7 @@
     }).then(function (svc) {
       return Promise.all([svc.getCharacteristic(U(2)), svc.getCharacteristic(U(3)), svc.getCharacteristic(U(4)), svc.getCharacteristic(U(5))]);
     }).then(function (cs) {
-      var cInfo = cs[0], cAgora = cs[1], cCmd = cs[2]; cDados = cs[3];
+      var cInfo = cs[0], cAgora = cs[1], cCmd = cs[2]; cDados = cs[3]; cAgoraVivo = cAgora;
       var escrever = function (t) { var b = new TextEncoder().encode(t); return cCmd.writeValueWithResponse ? cCmd.writeValueWithResponse(b) : cCmd.writeValue(b); };
       var fim = new Promise(function (ok) {
         aoChegar = function (ev) {
@@ -244,7 +257,7 @@
       for (var i = 0; i < n; i++) {
         var k = i * 32, seq = dv.getUint32(k, true), ep = dv.getUint32(k + 4, true), up = dv.getUint32(k + 8, true), boot = dv.getUint16(k + 12, true);
         var val = dv.getUint8(k + 30), m = ep > 0 ? ep : (boot === info.boot ? epoca - (info.up - up) : null);
-        regs.push({ seq: seq, m: m, b: boot, u: up,
+        regs.push({ seq: seq, m: m, b: boot, u: up, c: colPedida, a: id,
           t: val & 1 ? dv.getInt16(k + 14, true) / 10 : null, ur: val & 1 ? dv.getUint16(k + 16, true) / 10 : null,
           lux: val & 2 ? dv.getUint16(k + 18, true) : null,
           tc1: val & 4 ? dv.getInt16(k + 20, true) / 4 : null, tc2: val & 8 ? dv.getInt16(k + 22, true) / 4 : null,
@@ -252,13 +265,17 @@
         if (pri < 0) pri = seq; ult = seq;
         if (m) { if (!mIni) mIni = m; mFim = m; }
       }
+      var hist = regs.filter(function (r) { return r.m; }).map(function (r) { return { m: r.m, c: colPedida, a: id, o: 'r', seq: r.seq, t: r.t, ur: r.ur, lux: r.lux, tc1: r.tc1, tc2: r.tc2, tc3: r.tc3, p: r.p }; });
+      regs.forEach(function (r) { delete r.c; delete r.a; });
       var nome = n ? id + '_' + epoca + '.json' : null;
       var salvar = nome ? tx('lotes', 'readwrite', function (st) { st.put(JSON.stringify({ aparelho: id, colonia: colonia, fw: info.fw, baixado: epoca, registros: regs }), nome); })
         .then(function () { if (lotes.indexOf(nome) < 0) lotes.push(nome); }) : Promise.resolve();
-      return salvar.then(function () {
-        encerrar();
-        window.bleConcluido && bleConcluido(chave, { id: id, colonia: colPedida, fw: info.fw, boot: info.boot, intervalo: info.intervalo, tara: info.tara, proximo: info.proximo,
-          n: n, primeiro: pri, ultimo: ult, mIni: mIni, mFim: mFim, lote: nome, agora: agora, quando: epoca });
+      return salvar.then(function () { return anexarHistorico(hist); }).then(function () {
+        var res = { id: id, colonia: colPedida, fw: info.fw, boot: info.boot, intervalo: info.intervalo, tara: info.tara, proximo: info.proximo,
+          n: n, primeiro: pri, ultimo: ult, mIni: mIni, mFim: mFim, lote: nome, agora: agora, quando: epoca };
+        if (!opcoes.aoVivo) { encerrar(); window.bleConcluido && bleConcluido(chave, res); return; }
+        window.bleConcluido && bleConcluido(chave, res);
+        iniciarVivo();
       });
     }).catch(function (e) {
       var cancelado = s.cancelado;
@@ -268,12 +285,93 @@
       if (erroColonia) { js(function () { window.bleErro && window.bleErro(chave, msg, 'colonia', erroColonia); }); return; }
       bleErro(chave, msg);
     });
+    function iniciarVivo() {
+      var buffer = [], inicio = Date.now(), parado = false, temporizador;
+      clearInterval(s.vigia);
+      function registrar(a) {
+        var m = Math.floor(Date.now() / 1000), tc = a.tc || [];
+        var r = { m: m, t: a.t, ur: a.ur, lux: a.lux, tc1: tc[0], tc2: tc[1], tc3: tc[2], p: a.peso };
+        buffer.push(r);
+        anexarHistorico([{ m: m, c: colPedida, a: id, o: 'v', seq: null, t: r.t, ur: r.ur, lux: r.lux, tc1: r.tc1, tc2: r.tc2, tc3: r.tc3, p: r.p }]);
+        var env = JSON.parse(JSON.stringify(a)); env.m = m; env.n = buffer.length;
+        window.bleLeitura && bleLeitura(chave, env);
+      }
+      function parar(motivo) {
+        if (parado) return; parado = true; clearTimeout(temporizador);
+        if (buffer.length) {
+          var nome = 'vivo_' + id + '_' + Math.floor(Date.now() / 1000) + '.json';
+          tx('lotes', 'readwrite', function (st) { st.put(JSON.stringify({ tipo: 'vivo', aparelho: id, colonia: colPedida, visita: opcoes.visita || '', registros: buffer }), nome); })
+            .then(function () { if (lotes.indexOf(nome) < 0) lotes.push(nome); });
+        }
+        vivoAtual = null; encerrar();
+        window.bleVivoFim && bleVivoFim(chave, motivo || '');
+      }
+      function ciclo() {
+        if (parado) return;
+        if (Date.now() - inicio > 1800000) { parar('Leitura ao vivo encerrada após 30 minutos.'); return; }
+        cAgoraVivo.readValue().then(function (v) { registrar(JSON.parse(texto(v))); temporizador = setTimeout(ciclo, 10000); })
+          .catch(function () { parar('A conexão com o aparelho caiu. A leitura ao vivo foi encerrada.'); });
+      }
+      vivoAtual = { parar: parar };
+      registrar(agora);
+      temporizador = setTimeout(ciclo, 10000);
+    }
     function encerrar() {
       clearInterval(s.vigia);
       try { if (cDados && aoChegar) cDados.removeEventListener('characteristicvaluechanged', aoChegar); } catch (x) {}
       try { if (gatt && gatt.connected) gatt.disconnect(); } catch (x) {}
       if (sessao === s) sessao = null;
     }
+  }
+
+  /* ---------------- histórico permanente ---------------- */
+  function anexarHistorico(linhas) {
+    if (!linhas.length) return Promise.resolve();
+    return tx('historico', 'readwrite', function (st) { linhas.forEach(function (l) { st.add(l); }); });
+  }
+  function lerHistorico(desde) {
+    return bancoP.then(function (db) {
+      return new Promise(function (ok) {
+        var out = [], t = db.transaction('historico', 'readonly');
+        var r = t.objectStore('historico').index('m').openCursor(IDBKeyRange.lowerBound(desde));
+        r.onsuccess = function () { var c = r.result; if (c) { out.push(c.value); c.continue(); } else ok(out); };
+        r.onerror = function () { ok(out); };
+      });
+    });
+  }
+  var CAMPOS_H = ['t', 'ur', 'lux', 'tc1', 'tc2', 'tc3', 'p'];
+  function historico(colonia, desdeTxt) {
+    var desde = parseInt(desdeTxt, 10) || 0;
+    return lerHistorico(desde).then(function (linhas) {
+      var ag = {};
+      linhas.forEach(function (l) {
+        if (!l.c || (colonia > 0 && l.c !== colonia)) return;
+        var hora = Math.floor(l.m / 3600) * 3600, k = hora + ';' + l.c, a = ag[k];
+        if (!a) { a = ag[k] = { h: hora, c: l.c, n: 0, s: [0, 0, 0, 0, 0, 0, 0], q: [0, 0, 0, 0, 0, 0, 0], min: Infinity, max: -Infinity }; }
+        a.n++;
+        CAMPOS_H.forEach(function (f, i) { var x = l[f]; if (x == null || isNaN(x)) return; a.s[i] += +x; a.q[i]++; if (i === 6) { a.min = Math.min(a.min, x); a.max = Math.max(a.max, x); } });
+      });
+      return Object.keys(ag).map(function (k) { return ag[k]; }).sort(function (x, y) { return x.h - y.h || x.c - y.c; }).map(function (a) {
+        var p = [a.h, a.c, a.n];
+        for (var i = 0; i < 7; i++) p.push(a.q[i] ? (a.s[i] / a.q[i]).toFixed(3) : '', a.q[i]);
+        p.push(a.q[6] ? a.min.toFixed(3) : '', a.q[6] ? a.max.toFixed(3) : '');
+        return p.join(';');
+      }).join('\n');
+    });
+  }
+  function exportarHistorico() {
+    lerHistorico(0).then(function (linhas) {
+      var dois = function (n) { return (n < 10 ? '0' : '') + n; };
+      var t = '\ufeffmomento_epoca;data_hora;colonia;aparelho;origem;seq;temp_amb;umidade;lux;tc_fundo;tc_divisao;tc_melgueira;peso_kg\n';
+      linhas.forEach(function (l) {
+        var d = new Date(l.m * 1000), dh = dois(d.getDate()) + '/' + dois(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + dois(d.getHours()) + ':' + dois(d.getMinutes()) + ':' + dois(d.getSeconds());
+        t += [l.m, dh, l.c, l.a, l.o === 'v' ? 'ao vivo' : 'registro', l.seq == null ? '' : l.seq].concat(CAMPOS_H.map(function (f) { return l[f] == null ? '' : String(l[f]).replace('.', ','); })).join(';') + '\n';
+      });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([t], { type: 'text/csv;charset=utf-8' }));
+      a.download = 'medicoes_meliponas_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    });
   }
 
   /* ---------------- ponte ---------------- */
@@ -302,11 +400,15 @@
       var c = navigator.connection;
       return c && c.type === 'cellular' ? 'movel' : 'wifi';
     },
-    versao: function () { return '3.1-web'; },
+    versao: function () { return '3.2-web'; },
     bleBuscar: function (c) { bleBuscar(c); },
-    bleBaixar: bleBaixar,
+    bleBaixar: function (c, i, d, col) { bleBaixar(c, i, d, col); },
+    bleAoVivo: bleAoVivo,
+    bleParar: bleParar,
+    historico: historico,
+    exportarHistorico: exportarHistorico,
     bleIdentificar: bleIdentificar,
-    bleCancelar: function () { if (sessao) { sessao.cancelado = true; try { if (sessao.dev && sessao.dev.gatt.connected) sessao.dev.gatt.disconnect(); } catch (x) {} sessao = null; } },
+    bleCancelar: bleParar,
     lotesPendentes: function () { return JSON.stringify(lotes); },
     lerLote: function (nome) { return tx('lotes', 'readonly', function (s) { return s.get(nome); }).then(function (v) { return v || ''; }); },
     apagarLote: function (nome) { lotes = lotes.filter(function (x) { return x !== nome; }); tx('lotes', 'readwrite', function (s) { s.delete(nome); }); }

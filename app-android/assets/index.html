@@ -129,6 +129,29 @@ header .id{flex:1;min-width:0}
 .achados .linha{display:flex;gap:8px;margin-top:8px}
 .achados .esc{flex:1;display:flex;justify-content:space-between;align-items:center;padding:12px;border:2px solid var(--linha);border-radius:10px;background:#fff;font-weight:700;text-align:left}
 .achados .pis{width:auto;padding:0 14px;border:2px solid var(--mel);border-radius:10px;background:var(--mel-claro);font-weight:700;font-size:14px}
+.hlogos{display:flex;gap:6px;align-items:center;flex:none}
+.hlogos img{height:34px;background:#fff;border-radius:6px;padding:2px 5px}
+.vivo{margin-top:10px;border-top:1px dashed var(--linha);padding-top:8px}
+.vivo .pulso{display:inline-block;width:9px;height:9px;border-radius:50%;background:#2F9E44;margin-right:6px;animation:pulso 1.2s infinite}
+@keyframes pulso{0%{opacity:1}50%{opacity:.25}100%{opacity:1}}
+.alerta{border-radius:10px;padding:10px 12px;margin:8px 0;font-size:15px}
+.alerta b{display:block;margin-bottom:2px}
+.alerta.problema{background:var(--alerta-claro);border-left:6px solid var(--alerta)}
+.alerta.atencao{background:var(--mel-claro);border-left:6px solid var(--mel)}
+.alerta.bom{background:var(--folha-claro);border-left:6px solid var(--folha)}
+.gcol{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.mcol{background:#fff;border:2px solid var(--linha);border-radius:12px;padding:10px;text-align:left}
+.mcol.problema{border-color:var(--alerta)} .mcol.atencao{border-color:var(--mel)} .mcol.ok{border-color:var(--folha)}
+.mcol .n{font-weight:800;font-size:16px} .mcol .v{font-size:20px;font-weight:800;color:var(--madeira)}
+.mcol .d{font-size:13px;font-weight:700} .mcol svg{width:100%;height:34px;display:block;margin-top:4px}
+.graf{width:100%;height:auto;display:block}
+.leg{display:flex;flex-wrap:wrap;gap:10px;font-size:13px;color:var(--suave);margin-top:4px}
+.leg i{display:inline-block;width:12px;height:3px;margin-right:4px;vertical-align:middle}
+.filtros2{display:flex;gap:8px;margin-bottom:10px}
+.filtros2 select{flex:1}
+#modalAviso{position:fixed;inset:0;background:rgba(36,24,15,.55);z-index:60;display:none;align-items:center;justify-content:center;padding:18px}
+#modalAviso.aberto{display:flex}
+#modalAviso .caixa{background:#fff;border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow:auto;padding:16px}
 </style>
 </head>
 <body>
@@ -146,12 +169,14 @@ header .id{flex:1;min-width:0}
 </div>
 
 <header>
+  <div class="hlogos"><img src="logos/ipe-fis.png" alt="IPÊ | FIS" onerror="this.style.display='none'"><img src="logos/amazonia-bee.png" alt="Amazônia Bee" onerror="this.style.display='none'"></div>
   <div class="id"><div class="quem" id="hQuem">Monitor</div><div class="quando" id="hQuando"></div><div class="sinc" id="hSinc"></div></div>
 </header>
 
 <main>
   <section id="aba-visita"></section>
   <section id="aba-historico" class="oculto"></section>
+  <section id="aba-painel" class="oculto"></section>
   <section id="aba-guia" class="oculto"></section>
   <section id="aba-ajustes" class="oculto"></section>
 </main>
@@ -178,13 +203,16 @@ header .id{flex:1;min-width:0}
   <button data-aba="visita" class="ativo" onclick="irAba('visita')">
     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l8.66 5v10L12 22l-8.66-5V7z"/></svg>Visita</button>
   <button data-aba="historico" onclick="irAba('historico')">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Histórico</button>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Visitas</button>
+  <button data-aba="painel" onclick="irAba('painel')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Painel</button>
   <button data-aba="guia" onclick="irAba('guia')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 4h10l4 4v12H5z"/><path d="M9 12h6M9 16h6"/></svg>Guia</button>
   <button data-aba="ajustes" onclick="irAba('ajustes')">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2"/></svg>Ajustes</button>
 </nav>
 <div id="toast"></div>
+<div id="modalAviso" onclick="if(event.target===this) fecharAviso()"><div class="caixa"><h3 style="margin:0 0 8px" id="mTitulo">Atenção</h3><div id="mCorpo"></div><button class="botao" onclick="fecharAviso()">Entendi</button></div></div>
 
 <script>
 /* ---------- dados ---------- */
@@ -263,9 +291,9 @@ function cabecalho(){
 var abaAtual='visita';
 function irAba(a){
   abaAtual=a;
-  ['visita','historico','guia','ajustes'].forEach(function(x){ $('aba-'+x).classList.toggle('oculto',x!==a); });
+  ['visita','historico','painel','guia','ajustes'].forEach(function(x){ $('aba-'+x).classList.toggle('oculto',x!==a); });
   var bs=document.querySelectorAll('nav button'); for(var i=0;i<bs.length;i++) bs[i].classList.toggle('ativo', bs[i].getAttribute('data-aba')===a);
-  ({visita:telaVisita,historico:telaHistorico,guia:telaGuia,ajustes:telaAjustes})[a]();
+  ({visita:telaVisita,historico:telaHistorico,painel:telaPainel,guia:telaGuia,ajustes:telaAjustes})[a]();
   window.scrollTo(0,0);
 }
 
@@ -324,6 +352,7 @@ function terminarVisita(){
   for(var n=1;n<=12;n++) if(!completo(v.col[n])) falta.push(n);
   if(falta.length && !confirm('Faltam as colônias '+falta.join(', ')+'. Terminar mesmo assim?')) return;
   if(gravando) pararAudio(false);
+  if(vivo) pararVivo();
   var mv=medicoesVisita(v); v.enviadoSistema = mv.vinc>0 && mv.ok===mv.vinc;
   v.fim=new Date().toISOString(); E.atual=null; salvar();
   telaVisita(); abrirResumo(v.id, true);
@@ -334,8 +363,11 @@ function terminarVisita(){
 var colAberta=null;
 function abrirColonia(n){
   if(gravando) pararAudio(false);
+  if(vivo && vivo.n!==n) pararVivo();
   colAberta=n; var v=visitaAtual(); if(!v.col[n]) v.col[n]={};
   $('fTitulo').textContent='Colônia '+n;
+  var c=E.colonias[n-1];
+  if(c.aparelho && temPonte('bleAoVivo') && !semBluetooth() && !baixando && !(vivo && vivo.n===n && vivo.ativo)) iniciarVivo(n);
   desenharColonia(); $('formColonia').classList.add('aberta'); $('formColonia').scrollTop=0;
 }
 function desenharColonia(){
@@ -380,7 +412,7 @@ function proxima(){
   if(!completo(r)){ toast('Faltam itens. Você pode voltar depois.'); }
   if(colAberta<12){ abrirColonia(colAberta+1); } else { fecharColonia(); }
 }
-function fecharColonia(){ if(gravando) pararAudio(false); if(temPonte('pararReproducao')) Android.pararReproducao(); $('formColonia').classList.remove('aberta'); colAberta=null; telaVisita(); }
+function fecharColonia(){ if(gravando) pararAudio(false); if(vivo) pararVivo(); if(temPonte('pararReproducao')) Android.pararReproducao(); $('formColonia').classList.remove('aberta'); colAberta=null; telaVisita(); }
 
 
 /* ---------- fotos e áudios ---------- */
@@ -535,12 +567,15 @@ function cartaoAparelho(n,r){
   var c=E.colonias[n-1], d=r.download||null, h='';
   if(semBluetooth()) return '<div class="aparelho"><div class="tit"><span>Aparelho de medição</span><span class="id">'+esc(c.aparelho||'')+'</span></div><p class="suave" style="margin:6px 0 0">Neste navegador não há Bluetooth para o aparelho. As medições ficam guardadas no BeeMeter por 31 dias e são baixadas pelo celular Android ou pelo navegador Bluefy.</p></div>';
   if(!c.aparelho) return '<div class="aparelho"><div class="tit">Aparelho de medição</div><p class="suave" style="margin:6px 0 0">Nenhum aparelho vinculado a esta colônia.</p><button class="botao claro" onclick="abrirBusca('+n+')">Procurar e vincular aparelho</button></div>';
-  h+='<div class="aparelho'+(d&&d.ok?' ok':(d&&d.erro?' falha':''))+'"><div class="tit"><span>Aparelho de medição</span><span class="id">'+esc(c.aparelho)+'</span></div>';
+  h+='<div id="cxAparelho" class="aparelho'+(d&&d.ok?' ok':(d&&d.erro?' falha':''))+'"><div class="tit"><span>Aparelho de medição</span><span class="id">'+esc(c.aparelho)+'</span></div>';
+  var comVivo=vivo && vivo.n===n && (vivo.ativo||vivo.leituras.length);
   if(baixando===n){
     h+='<p id="bleTxt" style="margin:8px 0 0">'+esc(bleTexto)+'</p><div class="progresso"><span id="blePct" style="width:'+blePct+'%"></span></div><button class="botao claro" onclick="cancelarDownload()">Cancelar</button>';
+  } else if(d&&d.ok&&comVivo){
+    h+='<p style="margin:8px 0 0">Baixado às '+horaBR(new Date(d.quando*1000).toISOString())+': <b>'+d.n+' registro(s) novo(s)</b>.</p>'+htmlVivo();
   } else if(d&&d.ok){
     h+='<p style="margin:8px 0 0">Baixado às '+horaBR(new Date(d.quando*1000).toISOString())+': <b>'+d.n+' registro(s) novo(s)</b>'+(d.mIni?' ('+dataHora(d.mIni)+' a '+dataHora(d.mFim)+')':'')+'.</p>'+leiturasHTML(d.agora)+
-       '<button class="botao claro" onclick="baixarAparelho('+n+')">Baixar de novo</button>';
+       '<button class="botao claro" onclick="baixarAparelho('+n+')">'+(temPonte('bleAoVivo')?'Retomar leitura ao vivo':'Baixar de novo')+'</button>';
   } else {
     if(d&&d.erro) h+='<p style="margin:8px 0 0;color:var(--alerta)">'+esc(d.erro)+'</p>';
     if(d&&d.colErrada){
@@ -553,11 +588,12 @@ function cartaoAparelho(n,r){
 function baixarAparelho(n,forcar){
   if(!temPonte('bleBaixar')){ toast('O download funciona só no aplicativo instalado'); return; }
   if(baixando){ toast('Aguarde o download em andamento'); return; }
+  if(temPonte('bleAoVivo') && colAberta===n){ iniciarVivo(n,forcar); redesenharMantendoRolagem(); return; }
   var c=E.colonias[n-1], ap=E.aparelhos[c.aparelho]||{};
   baixando=n; bleTexto='Preparando o Bluetooth…'; blePct=2; redesenharMantendoRolagem();
   Android.bleBaixar('baixar|'+E.atual+'|'+n, c.aparelho, String(ap.ultimoSeq?ap.ultimoSeq+1:0), (forcar||ap.forcarColonia)?-n:n);
 }
-function cancelarDownload(){ if(temPonte('bleCancelar')) Android.bleCancelar(); baixando=null; redesenharMantendoRolagem(); }
+function cancelarDownload(){ if(vivo) pararVivo(); else if(temPonte('bleCancelar')) Android.bleCancelar(); baixando=null; redesenharMantendoRolagem(); }
 window.bleProgresso=function(chave,txt,pct){
   if(String(chave).indexOf('baixar|')!==0) return;
   bleTexto=txt; blePct=pct; var t=$('bleTxt'), b=$('blePct'); if(t) t.textContent=txt; if(b) b.style.width=pct+'%';
@@ -566,6 +602,7 @@ window.bleErro=function(chave,msg,tipo,colAparelho){
   if(chave==='piscar'){ toast(msg); return; }
   if(String(chave).indexOf('baixar|')===0){
     var p=chave.split('|'), v=acharVisita(p[1]), n=+p[2]; baixando=null;
+    if(vivo && vivo.chave===chave){ vivo.ativo=false; }
     if(v){ v.col[n]=v.col[n]||{}; v.col[n].download={ok:false,erro:msg,colErrada:tipo==='colonia'?colAparelho:null}; salvar(); }
     if(colAberta===n) redesenharMantendoRolagem(); else toast(msg);
   } else {
@@ -582,6 +619,7 @@ window.bleConcluido=function(chave,res){
   salvar();
   if(colAberta===n) redesenharMantendoRolagem();
   toast('Colônia '+n+': '+res.n+' registro(s) baixado(s)');
+  if(res.n>0) setTimeout(function(){ verificarColonia(n); },600);
   if(!res.tara) setTimeout(function(){ toast('Aviso: a balança do aparelho está sem tara'); },2500);
 };
 function identificarAparelho(id){
@@ -658,9 +696,221 @@ function enviarLote(nome){
   var lote=JSON.parse(txt), regs=lote.registros||[], partes=[];
   for(var i=0;i<regs.length;i+=400) partes.push(regs.slice(i,i+400));
   return partes.reduce(function(pr,parte){ return pr.then(function(){
+    if(lote.tipo==='vivo') return rpcFn('enviar_leituras_vivo',{codigo:E.servidor.codigo,dispositivo:E.dispositivo,aparelho:lote.aparelho,colonia:lote.colonia,visita:lote.visita||null,registros:parte});
     return rpcFn('enviar_medicoes',{codigo:E.servidor.codigo,dispositivo:E.dispositivo,aparelho:lote.aparelho,colonia:lote.colonia,fw:lote.fw,registros:parte});
   }); }, Promise.resolve()).then(function(){ Android.apagarLote(nome); });
   });
+}
+
+/* ---------- leitura ao vivo durante a ficha (a cada 10 s) ---------- */
+var vivo=null; // {n, chave, ativo, leituras:[], alertas:{}}
+var LIM={ninhoQuente:36, ninhoFrio:22, umidade:90, quedaKg:0.3, quedaPct:0.05, lacunaH:6, semDadosH:48};
+function hhmmss(seg){ var d=new Date(seg*1000); return dois(d.getHours())+':'+dois(d.getMinutes())+':'+dois(d.getSeconds()); }
+function iniciarVivo(n,forcar){
+  var c=E.colonias[n-1], ap=E.aparelhos[c.aparelho]||{}, chave='baixar|'+E.atual+'|'+n;
+  if(vivo && vivo.n!==n) pararVivo();
+  vivo={n:n, chave:chave, ativo:false, leituras:[], alertas:{}};
+  baixando=n; bleTexto='Preparando o Bluetooth…'; blePct=2;
+  Android.bleAoVivo(chave, c.aparelho, String(ap.ultimoSeq?ap.ultimoSeq+1:0), (forcar||ap.forcarColonia)?-n:n, E.atual||'');
+}
+function pararVivo(){
+  if(vivo && temPonte('bleParar')) Android.bleParar();
+  if(vivo) vivo.ativo=false;
+  if(baixando) baixando=null;
+}
+function atualizarCartao(){
+  if(colAberta==null) return; var el=$('cxAparelho'); if(!el) return;
+  var r=visitaAtual()&&visitaAtual().col[colAberta]; if(!r) return;
+  el.outerHTML=cartaoAparelho(colAberta,r);
+}
+function checarLeitura(a,primeira){
+  var al={}, tc=a.tc||[], nomes=[];
+  if(tc[0]!=null && tc[0]>LIM.ninhoQuente) al.quente={nivel:'problema',titulo:'Ninho muito quente: '+fmtNum(tc[0],' °C',1),texto:'Risco para a cria. Confira a sombra e a ventilação da caixa.'};
+  if(tc[0]!=null && tc[0]<LIM.ninhoFrio) al.frio={nivel:'atencao',titulo:'Ninho frio: '+fmtNum(tc[0],' °C',1),texto:'A colônia pode estar fraca. Observe o movimento na entrada.'};
+  if(a.ur!=null && a.ur>LIM.umidade) al.umido={nivel:'atencao',titulo:'Umidade alta: '+fmtNum(a.ur,'%',0),texto:'Risco de mofo. Confira se entra água na caixa.'};
+  if(a.t==null) nomes.push('temperatura/umidade'); if(tc[0]==null) nomes.push('fundo'); if(tc[1]==null) nomes.push('divisão'); if(tc[2]==null) nomes.push('melgueira'); if(a.peso==null) nomes.push('balança');
+  if(nomes.length) al.sensor={nivel:'atencao',titulo:'Sensor sem leitura: '+nomes.join(', '),texto:'Confira os fios e conectores. Avise a equipe se continuar.'};
+  if(primeira && a.peso!=null && primeira.peso!=null && Math.abs(a.peso-primeira.peso)>1) al.peso={nivel:'atencao',titulo:'Peso mudou '+fmtNum(a.peso-primeira.peso,' kg',2)+' durante a visita',texto:'É normal se a caixa foi aberta ou mexida. Se não foi, confira a balança.'};
+  return al;
+}
+window.bleLeitura=function(chave,a){
+  if(!vivo || vivo.chave!==chave) return;
+  vivo.ativo=true; baixando=null;
+  vivo.leituras.push({m:a.m,t:a.t,ur:a.ur,lux:a.lux,tc:a.tc||[],peso:a.peso});
+  if(vivo.leituras.length>400) vivo.leituras.shift();
+  var al=checarLeitura(a,vivo.leituras[0]);
+  var novosProb=[];
+  Object.keys(al).forEach(function(k){ if(!vivo.alertas[k]){ toast(al[k].titulo); if(al[k].nivel==='problema' && !(vivo.avisados||{})[k]) novosProb.push(al[k]); } });
+  if(novosProb.length){ vivo.avisados=vivo.avisados||{}; novosProb.forEach(function(a){ var k=Object.keys(al).filter(function(x){return al[x]===a;})[0]; vivo.avisados[k]=1; a.col=vivo.n; }); mostrarAviso('Atenção nesta colônia',novosProb); }
+  vivo.alertas=al;
+  var p=chave.split('|'), v=acharVisita(p[1]); if(v&&v.col[+p[2]]){ v.col[+p[2]].vivoN=a.n; }
+  if(a.n%6===1) salvar();
+  atualizarCartao();
+};
+window.bleVivoFim=function(chave,msg){
+  if(!vivo || vivo.chave!==chave) return;
+  vivo.ativo=false; if(msg) toast(msg); salvar(); atualizarCartao();
+};
+function svgLinha(series,o){
+  o=o||{}; var W=340,H=o.alt||150,L=36,R=8,T=8,B=20, pts=[];
+  series.forEach(function(s){ pts=pts.concat(s.pts); });
+  if(pts.length<2) return '<div class="suave" style="padding:14px 0">Dados insuficientes para o gráfico.</div>';
+  var x0=Math.min.apply(null,pts.map(function(p){return p[0];})), x1=Math.max.apply(null,pts.map(function(p){return p[0];}));
+  var y0=Math.min.apply(null,pts.map(function(p){return p[1];})), y1=Math.max.apply(null,pts.map(function(p){return p[1];}));
+  if(o.y0!=null) y0=Math.min(y0,o.y0); if(o.y1!=null) y1=Math.max(y1,o.y1);
+  var py=(y1-y0)*0.08||0.5; y0-=py; y1+=py; if(x1===x0) x1=x0+1;
+  var X=function(x){ return L+(x-x0)/(x1-x0)*(W-L-R); }, Y=function(y){ return T+(1-(y-y0)/(y1-y0))*(H-T-B); };
+  var g='<svg class="graf" viewBox="0 0 '+W+' '+H+'" xmlns="http://www.w3.org/2000/svg">';
+  for(var i=0;i<=3;i++){ var yv=y0+(y1-y0)*i/3, yy=Y(yv); g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+yy+'" y2="'+yy+'" stroke="#E6DDD2"/><text x="'+(L-4)+'" y="'+(yy+4)+'" font-size="10" text-anchor="end" fill="#6B5D52">'+yv.toFixed(o.dec==null?1:o.dec)+'</text>'; }
+  if(o.limite!=null && o.limite>y0 && o.limite<y1) g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+Y(o.limite)+'" y2="'+Y(o.limite)+'" stroke="#B3261E" stroke-dasharray="4 3"/>';
+  var fmtx=function(x){ var d=new Date(x*1000); return o.hora?dois(d.getHours())+':'+dois(d.getMinutes()):dois(d.getDate())+'/'+dois(d.getMonth()+1); };
+  [x0,(x0+x1)/2,x1].forEach(function(x,i){ g+='<text x="'+X(x)+'" y="'+(H-5)+'" font-size="10" text-anchor="'+['start','middle','end'][i]+'" fill="#6B5D52">'+fmtx(x)+'</text>'; });
+  var salto=o.salto||3*3600;
+  series.forEach(function(s){
+    var d='', ant=null;
+    s.pts.forEach(function(p){ d+=(ant==null||p[0]-ant>salto?'M':'L')+X(p[0]).toFixed(1)+' '+Y(p[1]).toFixed(1)+' '; ant=p[0]; });
+    g+='<path d="'+d+'" fill="none" stroke="'+s.cor+'" stroke-width="'+(s.larg||2)+'" stroke-linejoin="round"/>';
+    if(s.pts.length===1||o.pontos) s.pts.forEach(function(p){ g+='<circle cx="'+X(p[0])+'" cy="'+Y(p[1])+'" r="2.2" fill="'+s.cor+'"/>'; });
+  });
+  g+='</svg>';
+  if(series.length>1||o.legenda) g+='<div class="leg">'+series.map(function(s){ return '<span><i style="background:'+s.cor+'"></i>'+s.nome+'</span>'; }).join('')+'</div>';
+  return g;
+}
+function svgMini(pts,cor){
+  if(pts.length<2) return '<svg></svg>';
+  var x0=pts[0][0], x1=pts[pts.length-1][0]||x0+1, ys=pts.map(function(p){return p[1];}), y0=Math.min.apply(null,ys), y1=Math.max.apply(null,ys); if(y1===y0){ y1+=0.01; y0-=0.01; }
+  var d=pts.map(function(p,i){ return (i?'L':'M')+((p[0]-x0)/(x1-x0||1)*100).toFixed(1)+' '+(32-(p[1]-y0)/(y1-y0)*30).toFixed(1); }).join(' ');
+  return '<svg viewBox="0 0 100 34" preserveAspectRatio="none"><path d="'+d+'" fill="none" stroke="'+cor+'" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>';
+}
+function htmlVivo(){
+  var L=vivo.leituras, u=L[L.length-1], h='<div class="vivo"><div style="font-weight:700">'+(vivo.ativo?'<span class="pulso"></span>Ao vivo · atualiza a cada 10 s':'Leitura ao vivo parada')+'</div>';
+  if(u){
+    h+='<div class="suave">'+L.length+' leitura(s) nesta visita · última às '+hhmmss(u.m)+' · guardadas no celular</div>'+leiturasHTML({t:u.t,ur:u.ur,lux:u.lux,tc:u.tc,peso:u.peso});
+    if(L.length>1){
+      h+='<div style="margin-top:8px;font-size:14px;font-weight:700">Durante a visita</div>'+svgLinha([
+        {nome:'Fundo (°C)',cor:'#B3261E',pts:L.filter(function(x){return x.tc[0]!=null;}).map(function(x){return [x.m,x.tc[0]];})},
+        {nome:'Ambiente (°C)',cor:'#8A6A50',pts:L.filter(function(x){return x.t!=null;}).map(function(x){return [x.m,x.t];})}],{alt:110,hora:true,salto:120});
+    }
+  }
+  Object.keys(vivo.alertas).forEach(function(k){ var a=vivo.alertas[k]; h+='<div class="alerta '+a.nivel+'"><b>'+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; });
+  h+=vivo.ativo?'<button class="botao claro" onclick="pararVivo();atualizarCartao()">Parar leitura ao vivo</button>':'<button class="botao" onclick="baixarAparelho('+vivo.n+')">Retomar leitura ao vivo</button>';
+  return h+'</div>';
+}
+
+/* ---------- histórico, análise e avisos ---------- */
+function lerHistorico(col,dias){
+  var desde=Math.floor(Date.now()/1000)-dias*86400;
+  if(!temPonte('historico')) return Promise.resolve([]);
+  return Promise.resolve(Android.historico(col,String(desde))).then(function(txt){
+    return String(txt||'').split('\n').filter(Boolean).map(function(l){
+      var c=l.split(';'), v=function(i){ return c[i]===''||c[i]==null?null:+c[i]; };
+      return {h:+c[0],c:+c[1],n:+c[2],t:v(3),nt:+c[4],ur:v(5),nur:+c[6],lux:v(7),nlux:+c[8],tc1:v(9),ntc1:+c[10],tc2:v(11),ntc2:+c[12],tc3:v(13),ntc3:+c[14],p:v(15),np:+c[16],pmin:v(17),pmax:v(18)};
+    });
+  });
+}
+function manejoPerto(col,seg,dias){
+  for(var i=0;i<E.visitas.length;i++){ var v=E.visitas[i], r=v.col[col]; if(!r||!r.manejo||r.manejo==='Nenhum') continue;
+    if(Math.abs(new Date(v.inicio).getTime()/1000-seg)<=dias*86400) return r.manejo; }
+  return null;
+}
+function diaDe(seg){ var d=new Date(seg*1000); return d.getFullYear()+'-'+dois(d.getMonth()+1)+'-'+dois(d.getDate()); }
+function dataCurta(seg){ var d=new Date(seg*1000); return dois(d.getDate())+'/'+dois(d.getMonth()+1); }
+function analisar(col,linhas){
+  var al=[], agora=Date.now()/1000;
+  if(!linhas.length) return [{nivel:'atencao',chave:'sem',titulo:'Sem medições no período',texto:'Baixe os dados do aparelho na próxima visita.'}];
+  var ult=linhas[linhas.length-1];
+  if(agora-ult.h>LIM.semDadosH*3600) al.push({nivel:'problema',chave:'parado'+diaDe(ult.h),titulo:'Sem medições desde '+dataCurta(ult.h),texto:'Baixe os dados na próxima visita. Se o aparelho estiver apagado, confira a bateria e a placa solar.'});
+  var maior=null; for(var i=1;i<linhas.length;i++){ var g=(linhas[i].h-linhas[i-1].h)/3600; if(g>LIM.lacunaH && (!maior||g>maior.g)) maior={g:g,de:linhas[i-1].h,ate:linhas[i].h}; }
+  if(maior) al.push({nivel:'atencao',chave:'lacuna'+maior.de,titulo:'Aparelho ficou '+Math.round(maior.g)+' h sem registrar',texto:'De '+dataCurta(maior.de)+' a '+dataCurta(maior.ate)+'. Pode ter faltado energia: confira a bateria e a placa solar.'});
+  // peso por dia
+  var dias={}; linhas.forEach(function(l){ if(l.p==null) return; var k=diaDe(l.h); (dias[k]=dias[k]||{s:0,n:0,h:l.h}); dias[k].s+=l.p; dias[k].n++; });
+  var ks=Object.keys(dias).sort(), med=ks.map(function(k){ return {k:k,h:dias[k].h,p:dias[k].s/dias[k].n}; });
+  for(var j=1;j<med.length;j++){ var q=med[j-1].p-med[j].p;
+    if(q>LIM.quedaKg && q>med[j-1].p*LIM.quedaPct){ var m=manejoPerto(col,med[j].h,1);
+      if(!m) al.push({nivel:'problema',chave:'queda'+med[j].k,titulo:'Peso caiu '+q.toFixed(2)+' kg em '+dataCurta(med[j].h),texto:'Não há colheita nem divisão anotada. Pode ser saque, fuga de abelhas ou colheita não registrada. Observe a colônia.'}); } }
+  if(med.length>=7){ var u7=med.slice(-7), ganho=u7[u7.length-1].p-u7[0].p;
+    if(Math.abs(ganho)<0.02) al.push({nivel:'atencao',chave:'parada'+u7[u7.length-1].k,titulo:'Peso parado nos últimos 7 dias',texto:'A colônia não ganhou peso. Observe a entrada e se há florada por perto.'}); }
+  var rec=linhas.filter(function(l){ return agora-l.h<=48*3600; });
+  var maxF=null, minF=null; linhas.forEach(function(l){ if(l.tc1==null) return; if(maxF==null||l.tc1>maxF.v) maxF={v:l.tc1,h:l.h}; if(minF==null||l.tc1<minF.v) minF={v:l.tc1,h:l.h}; });
+  if(maxF && maxF.v>LIM.ninhoQuente) al.push({nivel:'problema',chave:'quente'+diaDe(maxF.h),titulo:'Ninho chegou a '+maxF.v.toFixed(1)+' °C em '+dataCurta(maxF.h),texto:'Risco de superaquecimento da cria. Confira a sombra e a ventilação.'});
+  if(minF && minF.v<LIM.ninhoFrio) al.push({nivel:'atencao',chave:'frio'+diaDe(minF.h),titulo:'Ninho esfriou até '+minF.v.toFixed(1)+' °C em '+dataCurta(minF.h),texto:'A colônia pode estar fraca. Observe o movimento e a quantidade de abelhas.'});
+  var par=rec.filter(function(l){ return l.tc1!=null && l.t!=null; });
+  if(par.length>=24 && par.filter(function(l){ return Math.abs(l.tc1-l.t)<1; }).length/par.length>0.8)
+    al.push({nivel:'problema',chave:'semcontrole'+diaDe(agora),titulo:'Ninho acompanha a temperatura de fora',texto:'Nas últimas 48 h o fundo ficou igual ao ambiente. A colônia pode estar fraca ou morta: abra e verifique.'});
+  var umid=rec.filter(function(l){ return l.ur!=null && l.ur>LIM.umidade; }).length;
+  if(umid>=24) al.push({nivel:'atencao',chave:'umido'+diaDe(agora),titulo:'Umidade acima de 90% por '+umid+' h',texto:'Risco de mofo. Confira se entra água e se a caixa está bem fechada.'});
+  if(rec.length){ var tot=rec.reduce(function(a,l){return a+l.n;},0);
+    [['nt','Temperatura/umidade'],['ntc1','Termopar do fundo'],['ntc2','Termopar da divisão'],['ntc3','Termopar da melgueira'],['np','Balança']].forEach(function(f){
+      var ok=rec.reduce(function(a,l){return a+l[f[0]];},0); if(tot>=12 && ok/tot<0.5) al.push({nivel:'atencao',chave:'sensor'+f[0]+diaDe(agora),titulo:f[1]+' sem leitura em '+Math.round(100-ok/tot*100)+'% das medições',texto:'Confira os fios e conectores desse sensor. Avise a equipe se continuar.'}); }); }
+  return al;
+}
+function resumoPeso(linhas){
+  var ps=linhas.filter(function(l){return l.p!=null;}); if(!ps.length) return null;
+  var a=ps[0], b=ps[ps.length-1], dias=Math.max((b.h-a.h)/86400,1/24);
+  return {atual:b.p, varia:b.p-a.p, porDia:(b.p-a.p)/dias, pts:ps.map(function(l){return [l.h,l.p];})};
+}
+function mostrarAviso(titulo,lista){
+  $('mTitulo').textContent=titulo;
+  $('mCorpo').innerHTML=lista.map(function(a){ return '<div class="alerta '+a.nivel+'"><b>'+(a.col?'Colônia '+a.col+': ':'')+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; }).join('');
+  $('modalAviso').classList.add('aberto');
+}
+function fecharAviso(){ $('modalAviso').classList.remove('aberto'); }
+function avisarNovas(lista){
+  if(!E.alertasVistos) E.alertasVistos={};
+  var novas=lista.filter(function(a){ var k=a.col+'|'+a.chave; if(a.nivel!=='problema'||E.alertasVistos[k]) return false; return true; });
+  if(!novas.length) return;
+  novas.forEach(function(a){ E.alertasVistos[a.col+'|'+a.chave]=Date.now(); }); salvar();
+  mostrarAviso('Problemas para observar',novas);
+}
+function verificarColonia(n){
+  lerHistorico(n,14).then(function(l){ var al=analisar(n,l).map(function(a){ a.col=n; return a; }); avisarNovas(al); });
+}
+
+/* ---------- aba Painel ---------- */
+var painelDias=7, painelCol=0;
+function telaPainel(){
+  var h='<h2>Acompanhamento das colônias</h2><div class="filtros2"><select onchange="painelCol=+this.value;telaPainel()"><option value="0">Todas as colônias</option>';
+  for(var c=1;c<=12;c++) h+='<option value="'+c+'"'+(painelCol===c?' selected':'')+'>Colônia '+c+'</option>';
+  h+='</select><select onchange="painelDias=+this.value;telaPainel()">'+[[7,'7 dias'],[30,'30 dias'],[90,'90 dias'],[365,'1 ano']].map(function(o){ return '<option value="'+o[0]+'"'+(painelDias===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select></div>';
+  h+='<div id="painelCorpo"><div class="cartao suave">Carregando o histórico…</div></div>';
+  h+='<div class="cartao"><b>Dados guardados no celular</b><p class="suave" style="margin:6px 0 0">Todas as medições baixadas e as leituras ao vivo ficam guardadas no celular e não são apagadas, mesmo depois de enviadas ao servidor.</p><button class="botao claro" onclick="exportarDados()">Baixar todos os dados (planilha CSV)</button></div>';
+  $('aba-painel').innerHTML=h;
+  if(!temPonte('historico')){ $('painelCorpo').innerHTML='<div class="cartao">O histórico funciona no aplicativo instalado ou na versão para navegador.</div>'; return; }
+  lerHistorico(painelCol,painelDias).then(function(linhas){ if(abaAtual!=='painel') return; painelCol?painelColonia(painelCol,linhas):painelGeral(linhas); });
+}
+function exportarDados(){ if(temPonte('exportarHistorico')) Android.exportarHistorico(); else toast('Disponível no aplicativo instalado'); }
+function painelGeral(linhas){
+  var h='', todos=[], card='';
+  for(var c=1;c<=12;c++){
+    var l=linhas.filter(function(x){return x.c===c;}), al=analisar(c,l).map(function(a){ a.col=c; return a; }), rp=resumoPeso(l);
+    todos=todos.concat(al);
+    var nivel=al.some(function(a){return a.nivel==='problema';})?'problema':(al.length?'atencao':'ok');
+    var f=l.filter(function(x){return x.tc1!=null;}), ultF=f.length?f[f.length-1].tc1:null;
+    card+='<button class="mcol '+nivel+'" onclick="painelCol='+c+';telaPainel()"><div class="n">Colônia '+c+'</div>'+
+      (rp?'<div class="v">'+rp.atual.toFixed(2)+' kg</div><div class="d" style="color:'+(rp.varia>=0?'var(--folha)':'var(--alerta)')+'">'+(rp.varia>=0?'▲ +':'▼ ')+rp.varia.toFixed(2)+' kg</div>'+svgMini(rp.pts,rp.varia>=0?'#2F6B3A':'#B3261E'):'<div class="suave">sem peso</div>')+
+      '<div class="suave" style="font-size:12px">'+(ultF!=null?'ninho '+ultF.toFixed(1)+' °C · ':'')+(al.length?al.length+' aviso(s)':'sem avisos')+'</div></button>';
+  }
+  var prob=todos.filter(function(a){return a.nivel==='problema';}), at=todos.filter(function(a){return a.nivel==='atencao' && a.chave!=='sem';});
+  h+=prob.length?'<div class="cartao"><b>Problemas para observar ('+prob.length+')</b>'+prob.map(function(a){ return '<div class="alerta problema"><b>Colônia '+a.col+': '+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; }).join('')+'</div>':'<div class="alerta bom"><b>Nenhum problema nos últimos '+painelDias+' dias</b>Toque numa colônia para ver os gráficos.</div>';
+  if(at.length) h+='<details class="cartao" style="padding:0"><summary style="padding:14px 16px">Pontos de atenção ('+at.length+')</summary><div class="det">'+at.map(function(a){ return '<div class="alerta atencao"><b>Colônia '+a.col+': '+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; }).join('')+'</div></details>';
+  h+='<h3>Peso das colônias (produção)</h3><div class="gcol">'+card+'</div>';
+  $('painelCorpo').innerHTML=h;
+  avisarNovas(prob);
+}
+function painelColonia(c,l){
+  var al=analisar(c,l).map(function(a){ a.col=c; return a; }), rp=resumoPeso(l), info=colInfo(c), h='';
+  h+='<div class="cartao"><div style="font-weight:800;font-size:19px">Colônia '+c+'</div>'+(info?'<div class="suave">'+esc(info)+'</div>':'');
+  if(rp) h+='<div class="leituras" style="grid-template-columns:repeat(3,1fr)"><div><b>'+rp.atual.toFixed(2)+' kg</b><span>peso atual</span></div><div><b style="color:'+(rp.varia>=0?'var(--folha)':'var(--alerta)')+'">'+(rp.varia>=0?'+':'')+rp.varia.toFixed(2)+' kg</b><span>no período</span></div><div><b>'+(rp.porDia>=0?'+':'')+Math.round(rp.porDia*1000)+' g</b><span>por dia</span></div></div>';
+  h+='</div>';
+  al.forEach(function(a){ h+='<div class="alerta '+a.nivel+'"><b>'+esc(a.titulo)+'</b>'+esc(a.texto)+'</div>'; });
+  if(!al.length) h+='<div class="alerta bom"><b>Nenhum problema no período</b>A colônia está dentro do esperado.</div>';
+  var s=function(campo){ return l.filter(function(x){return x[campo]!=null;}).map(function(x){return [x.h,x[campo]];}); };
+  h+='<div class="cartao"><b>Peso da colmeia (kg) — produção</b>'+svgLinha([{nome:'Peso',cor:'#3B2414',pts:s('p'),larg:2.4}],{dec:2})+'</div>';
+  h+='<div class="cartao"><b>Temperaturas (°C)</b>'+svgLinha([{nome:'Fundo',cor:'#B3261E',pts:s('tc1')},{nome:'Divisão',cor:'#E08A1E',pts:s('tc2')},{nome:'Melgueira',cor:'#2F6B3A',pts:s('tc3')},{nome:'Ambiente',cor:'#8A6A50',pts:s('t'),larg:1.4}],{limite:LIM.ninhoQuente})+'<div class="suave" style="font-size:12px">Linha tracejada: '+LIM.ninhoQuente+' °C, limite de atenção do ninho.</div></div>';
+  h+='<div class="cartao"><b>Umidade do ambiente (%)</b>'+svgLinha([{nome:'Umidade',cor:'#2E6FA8',pts:s('ur')}],{dec:0,limite:LIM.umidade})+'</div>';
+  h+='<button class="botao claro" onclick="painelCol=0;telaPainel()">Ver todas as colônias</button>';
+  $('painelCorpo').innerHTML=h;
+  avisarNovas(al);
 }
 
 /* ---------- relatório ---------- */
@@ -734,7 +984,7 @@ function fecharResumo(){ $('telaResumo').classList.remove('aberta'); resumoId=nu
 
 /* ---------- histórico ---------- */
 function telaHistorico(){
-  var fin=E.visitas.filter(function(v){return v.fim;}).slice().reverse(), h='<h2>Histórico de visitas</h2>';
+  var fin=E.visitas.filter(function(v){return v.fim;}).slice().reverse(), h='<h2>Visitas</h2>';
   if(!fin.length){ $('aba-historico').innerHTML=h+'<div class="cartao">Nenhuma visita terminada ainda. As visitas aparecem aqui depois de tocar em "Terminar visita".</div>'; return; }
   var semana=0, lim=Date.now()-28*86400000; fin.forEach(function(v){ if(new Date(v.inicio).getTime()>lim) semana++; });
   h+='<div class="cartao"><b>'+fin.length+'</b> visita(s) no total · <b>'+semana+'</b> nas últimas 4 semanas</div><div class="cartao">';
@@ -766,7 +1016,7 @@ function telaGuia(){
    '<li>O trabalho vai da instalação dos aparelhos até <b>outubro de 2027</b>.</li></ul></div></details>';
   h+='<details><summary>Passo a passo da visita</summary><div class="det">'+
    '<h3>Antes de sair</h3><ol class="passos"><li>Carregar o celular.</li><li>Ligar o Bluetooth.</li><li>Levar pano limpo para a placa solar.</li></ol>'+
-   '<h3>Em cada colônia</h3><ol class="passos"><li>Chegar com calma, sem bater nem abrir a melgueira.</li><li>Abrir a colônia neste aplicativo e tocar em <b>Baixar dados do aparelho</b>. Esperar terminar: aparecem as medidas do momento.</li><li>Olhar a colônia por fora: movimento na entrada, pragas, umidade ou estragos na caixa.</li><li>Olhar o aparelho: placa limpa e virada para o sol, fios presos, caixa fechada e sem água, aparelho no lugar.</li><li>Registrar neste aplicativo. Se estiver tudo certo, use "Tudo normal".</li><li>Se notar algo diferente, tirar foto ou gravar áudio.</li></ol>'+
+   '<h3>Em cada colônia</h3><ol class="passos"><li>Chegar com calma, sem bater nem abrir a melgueira.</li><li>Abrir a colônia neste aplicativo: ele conecta ao aparelho sozinho, baixa os registros novos e fica lendo as medidas a cada 10 segundos enquanto a ficha estiver aberta.</li><li>Olhar a colônia por fora: movimento na entrada, pragas, umidade ou estragos na caixa.</li><li>Olhar o aparelho: placa limpa e virada para o sol, fios presos, caixa fechada e sem água, aparelho no lugar.</li><li>Registrar neste aplicativo. Se estiver tudo certo, use "Tudo normal".</li><li>Se notar algo diferente, tirar foto ou gravar áudio.</li></ol>'+
    '<h3>Depois da visita</h3><ol class="passos"><li>Tocar em "Terminar visita" e enviar o relatório no grupo.</li><li>Com internet, o aplicativo envia tudo sozinho: registros, fotos, áudios e medições dos aparelhos.</li><li>Se houver problema, avisar no mesmo dia e mandar as fotos.</li></ol>'+
    '<div class="dica">Visite sempre no mesmo dia, mesmo horário e na mesma ordem. Se não puder ir, vá no dia seguinte no mesmo horário e avise no grupo. Com chuva forte, adie para o dia seguinte.</div></div></details>';
   h+='<details><summary>Quando algo der errado</summary><div class="det"><table>'+
@@ -819,6 +1069,7 @@ function telaAjustes(){
   if(!lig.length) h+='<p class="suave">Nenhum aparelho vinculado ainda.</p>';
   else { h+='<table><tr><th>Colônia</th><th>Aparelho</th><th>Último download</th></tr>'; E.colonias.forEach(function(c){ if(!c.aparelho) return; var a=E.aparelhos[c.aparelho]||{}; h+='<tr><td>'+c.n+'</td><td>'+esc(c.aparelho)+'</td><td>'+(a.ultimoDownload?dataBR(a.ultimoDownload)+' '+horaBR(a.ultimoDownload):'—')+'</td></tr>'; }); h+='</table>'; }
   h+='<button class="botao claro" onclick="abrirBusca(0)">Procurar aparelhos por perto</button>';
+  h+='<button class="botao claro" onclick="exportarDados()">Baixar todos os dados (planilha CSV)</button>';
   h+='</div><div class="cartao"><h3 style="margin-top:0">Cópia de segurança</h3><p class="suave">Os registros ficam no celular até a sincronização. Se a sincronização não estiver funcionando, envie uma cópia para a equipe.</p>'+
    '<button class="botao claro" onclick="compartilhar(JSON.stringify(E),\'Cópia de segurança — Monitor Meliponas\')">Enviar cópia de segurança</button>'+
    '<button class="botao claro" onclick="restaurar()">Restaurar uma cópia</button></div>';
@@ -837,7 +1088,7 @@ function telaAjustes(){
   if(window.MM_WEB) h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Aponte a câmera para o código e, no Safari, toque em Compartilhar &gt; Adicionar à Tela de Início.</p><img src="qr-web.png" alt="QR code da versão web" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">andersonsakuma.github.io/monitor-meliponas/app</p></div>';
   else if(window.MM_IOS) h+='<div class="cartao"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">No iPhone, a instalação é pelo aplicativo TestFlight, com o convite enviado pela equipe técnica. Em celulares Android, use o QR code da folha de instalação.</p></div>';
   else h+='<div class="cartao" style="text-align:center"><h3 style="margin-top:0">Instalar em outro celular</h3><p class="suave">Peça para a outra pessoa apontar a câmera do celular para este código.</p><img src="qr-app.png" alt="QR code do aplicativo" style="width:220px;height:220px;border:8px solid var(--mel);border-radius:14px"><p class="suave" style="margin-top:8px">github.com/andersonsakuma/monitor-meliponas/releases/latest</p></div>';
-  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.1 · FIS | IPÊ · Amazônia Bee</p>';
+  h+=LOGOS_HTML+'<p class="suave" style="text-align:center">Monitor Meliponas 3.2 · FIS | IPÊ · Amazônia Bee</p>';
   $('aba-ajustes').innerHTML=h;
 }
 function sel(n,campo,rot,ops){

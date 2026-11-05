@@ -35,6 +35,10 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         var etapa = 0
         var tentativas = 0
         var piscar = false
+        var aoVivo = false
+        var visita = ""
+        var inicioVivo = Date()
+        var vivoBuffer: [[String: Any]] = []
         var info: [String: Any] = [:]
         var agora: Any = NSNull()
         var epocaCelular: Int64 = 0
@@ -162,11 +166,26 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         iniciar(chave: chave, id: id, desde: desde, colonia: colonia, piscar: false)
     }
 
-    private func iniciar(chave: String, id: String, desde: Int64, colonia: Int, piscar: Bool) {
+    /// Baixa os registros novos e continua lendo o aparelho a cada 10 s, até parar().
+    func aoVivo(chave: String, id: String, desde: Int64, colonia: Int, visita: String) {
+        iniciar(chave: chave, id: id, desde: desde, colonia: colonia, piscar: false, aoVivo: true, visita: visita)
+    }
+
+    func parar() {
+        DispatchQueue.main.async {
+            if self.central != nil { self.pararBusca() }
+            self.encerrar(nil)
+        }
+    }
+
+    private func iniciar(chave: String, id: String, desde: Int64, colonia: Int, piscar: Bool,
+                         aoVivo: Bool = false, visita: String = "") {
         comBluetooth(chave) {
             if self.sessao != nil { self.erro(chave, "Já há uma conexão em andamento."); return }
             self.sessao = Sessao(chave: chave, id: id, desde: desde, colonia: colonia)
             self.sessao!.piscar = piscar
+            self.sessao!.aoVivo = aoVivo
+            self.sessao!.visita = visita
             self.progresso(chave, "Procurando \(id)…", 5)
             self.iniciarBusca(chave: chave, segundos: 15, alvo: id)
         }
@@ -182,7 +201,8 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
     private func vivo() {
         vigia?.invalidate()
         vigia = Timer.scheduledTimer(withTimeInterval: 20, repeats: false) { [weak self] _ in
-            self?.encerrar("O aparelho parou de responder. Chegue mais perto e tente de novo.")
+            let vivo = (self?.sessao?.etapa ?? 0) >= 20
+            self?.encerrar(vivo ? "O aparelho parou de responder. A leitura ao vivo foi encerrada." : "O aparelho parou de responder. Chegue mais perto e tente de novo.")
         }
     }
 
@@ -194,13 +214,139 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         central.connect(p, options: nil)
     }
 
+    private var timerVivo: Timer?
+
     private func encerrar(_ msgErro: String?) {
         vigia?.invalidate()
         vigia = nil
+        timerVivo?.invalidate()
+        timerVivo = nil
         guard let s = sessao else { return }
         sessao = nil
         if let p = s.periferico, central != nil { central.cancelPeripheralConnection(p) }
-        if let m = msgErro { erro(s.chave, m) }
+        if s.etapa >= 20 {
+            salvarVivo(s)
+            saida("window.bleVivoFim && bleVivoFim(\(q(s.chave)),\(q(msgErro ?? "")))")
+        } else if let m = msgErro { erro(s.chave, m) }
+    }
+
+    // MARK: histórico permanente (nunca apagado)
+
+    private let filaHist = DispatchQueue(label: "historico")
+    private var arqHistorico: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let d = base.appendingPathComponent("historico", isDirectory: true)
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d.appendingPathComponent("historico.csv")
+    }
+
+    private func txt(_ v: Any?) -> String {
+        guard let v = v, !(v is NSNull) else { return "" }
+        if let n = v as? NSNumber { return n.stringValue }
+        return "\(v)"
+    }
+
+    private func linhaHistorico(_ m: Int64, _ col: Int, _ ap: String, _ origem: String, _ seq: Int64, _ r: [String: Any]) -> String {
+        "\(m);\(col);\(ap);\(origem);\(seq >= 0 ? String(seq) : "");\(txt(r["t"]));\(txt(r["ur"]));\(txt(r["lux"]));\(txt(r["tc1"]));\(txt(r["tc2"]));\(txt(r["tc3"]));\(txt(r["p"]))\n"
+    }
+
+    private func anexarHistorico(_ linhas: String) {
+        guard !linhas.isEmpty else { return }
+        filaHist.sync {
+            let url = arqHistorico
+            let dados = Data(linhas.utf8)
+            if let h = try? FileHandle(forWritingTo: url) {
+                h.seekToEndOfFile(); h.write(dados); h.closeFile()
+            } else {
+                try? dados.write(to: url)
+            }
+        }
+    }
+
+    /// Médias por hora (mesmo formato do Android).
+    func historico(colonia: Int, desde: Int64) -> String {
+        var texto = ""
+        filaHist.sync { texto = (try? String(contentsOf: arqHistorico, encoding: .utf8)) ?? "" }
+        var ag: [String: [Double]] = [:]
+        for l in texto.split(separator: "\n") {
+            let c = l.split(separator: ";", omittingEmptySubsequences: false)
+            guard c.count >= 12, let m = Int64(c[0]), let col = Int(c[1]), m >= desde, col > 0,
+                  colonia == 0 || col == colonia else { continue }
+            let hora = (m / 3600) * 3600
+            let k = String(format: "%012lld;%02d", hora, col)
+            var a = ag[k] ?? { var x = [Double](repeating: 0, count: 17); x[15] = .greatestFiniteMagnitude; x[16] = -.greatestFiniteMagnitude; return x }()
+            a[0] += 1
+            for i in 0..<7 {
+                guard let x = Double(c[5 + i]) else { continue }
+                a[1 + i * 2] += x; a[2 + i * 2] += 1
+                if i == 6 { a[15] = min(a[15], x); a[16] = max(a[16], x) }
+            }
+            ag[k] = a
+        }
+        var sb = ""
+        for k in ag.keys.sorted() {
+            let a = ag[k]!, p = k.split(separator: ";")
+            sb += "\(Int64(p[0])!);\(Int(p[1])!);\(Int(a[0]))"
+            for i in 0..<7 {
+                sb += ";" + (a[2 + i * 2] > 0 ? String(format: "%.3f", a[1 + i * 2] / a[2 + i * 2]) : "") + ";\(Int(a[2 + i * 2]))"
+            }
+            sb += ";" + (a[14] > 0 ? String(format: "%.3f", a[15]) : "") + ";" + (a[14] > 0 ? String(format: "%.3f", a[16]) : "") + "\n"
+        }
+        return sb
+    }
+
+    /// Arquivo CSV completo com cabeçalho e data legível.
+    func arquivoCsv() -> URL? {
+        var texto = ""
+        filaHist.sync { texto = (try? String(contentsOf: arqHistorico, encoding: .utf8)) ?? "" }
+        let f = DateFormatter(); f.dateFormat = "dd/MM/yyyy HH:mm:ss"
+        var sb = "\u{FEFF}momento_epoca;data_hora;colonia;aparelho;origem;seq;temp_amb;umidade;lux;tc_fundo;tc_divisao;tc_melgueira;peso_kg\n"
+        for l in texto.split(separator: "\n") {
+            guard let i = l.firstIndex(of: ";"), let m = Double(l[..<i]) else { continue }
+            let resto = String(l[l.index(after: i)...]).replacingOccurrences(of: ";v;", with: ";ao vivo;")
+                .replacingOccurrences(of: ";r;", with: ";registro;").replacingOccurrences(of: ".", with: ",")
+            sb += "\(l[..<i]);\(f.string(from: Date(timeIntervalSince1970: m)));\(resto)\n"
+        }
+        let f2 = DateFormatter(); f2.dateFormat = "yyyy-MM-dd"
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("medicoes_meliponas_\(f2.string(from: Date())).csv")
+        do { try sb.write(to: url, atomically: true, encoding: .utf8); return url } catch { return nil }
+    }
+
+    // MARK: leitura ao vivo
+
+    private func registrarVivo(_ a: [String: Any]) {
+        guard var s = sessao else { return }
+        let m = Int64(Date().timeIntervalSince1970)
+        let tc = a["tc"] as? [Any] ?? []
+        let r: [String: Any] = ["m": m, "t": a["t"] ?? NSNull(), "ur": a["ur"] ?? NSNull(), "lux": a["lux"] ?? NSNull(),
+                                "tc1": tc.count > 0 ? tc[0] : NSNull(), "tc2": tc.count > 1 ? tc[1] : NSNull(),
+                                "tc3": tc.count > 2 ? tc[2] : NSNull(), "p": a["peso"] ?? NSNull()]
+        s.vivoBuffer.append(r)
+        sessao = s
+        anexarHistorico(linhaHistorico(m, abs(s.colonia), s.id, "v", -1, r))
+        var env = a
+        env["m"] = m
+        env["n"] = s.vivoBuffer.count
+        if let d = try? JSONSerialization.data(withJSONObject: env), let j = String(data: d, encoding: .utf8) {
+            saida("window.bleLeitura && bleLeitura(\(q(s.chave)),\(j))")
+        }
+    }
+
+    private func salvarVivo(_ s: Sessao) {
+        guard !s.vivoBuffer.isEmpty else { return }
+        let lote: [String: Any] = ["tipo": "vivo", "aparelho": s.id, "colonia": abs(s.colonia), "visita": s.visita, "registros": s.vivoBuffer]
+        if let d = try? JSONSerialization.data(withJSONObject: lote) {
+            try? d.write(to: pastaLotes.appendingPathComponent("vivo_\(s.id)_\(Int64(Date().timeIntervalSince1970)).json"))
+        }
+    }
+
+    private func agendarVivo() {
+        timerVivo?.invalidate()
+        timerVivo = Timer.scheduledTimer(withTimeInterval: 10, repeats: false) { [weak self] _ in
+            guard let self = self, let s = self.sessao, let p = s.periferico, let c = s.cAgora else { return }
+            if Date().timeIntervalSince(s.inicioVivo) > 1800 { self.encerrar("Leitura ao vivo encerrada após 30 minutos."); return }
+            p.readValue(for: c)
+        }
     }
 
     func centralManager(_ c: CBCentralManager, didConnect p: CBPeripheral) {
@@ -221,6 +367,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
 
     private func tentarDeNovoOuFalhar() {
         guard var s = sessao else { return }
+        if s.etapa >= 20 { encerrar("A conexão com o aparelho caiu. A leitura ao vivo foi encerrada."); return }
         if s.etapa < 3 && s.tentativas < 2 {
             s.tentativas += 1
             s.etapa = 0
@@ -304,6 +451,9 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
             s.etapa = 3
             sessao = s
             escrever(p, "HORA \(s.epocaCelular)" + (colPedida > 0 && colAparelho != colPedida ? " \(colPedida)" : ""))
+        case BeeMeterBLE.C_AGORA where s.etapa >= 20:
+            if let a = (try? JSONSerialization.jsonObject(with: v)) as? [String: Any] { registrarVivo(a) }
+            agendarVivo()
         case BeeMeterBLE.C_AGORA:
             s.agora = (try? JSONSerialization.jsonObject(with: v)) ?? NSNull()
             s.etapa = 5
@@ -375,6 +525,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         let bootInfo = (s.info["boot"] as? NSNumber)?.int64Value ?? -1
         let upInfo = (s.info["up"] as? NSNumber)?.int64Value ?? 0
         var regs: [[String: Any]] = []
+        var hist = ""
         var primeiroSeq: Int64 = -1, ultimoSeq: Int64 = -1, mIni: Int64 = 0, mFim: Int64 = 0
         for i in 0..<n {
             let o = i * BeeMeterBLE.TAM
@@ -398,6 +549,7 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
                 "p": campo(val & 0x20 != 0, Double(pesoG) / 1000.0),
             ]
             regs.append(r)
+            if momento > 0 { hist += linhaHistorico(momento, abs(s.colonia), s.id, "r", seq, r) }
             if primeiroSeq < 0 { primeiroSeq = seq }
             ultimoSeq = seq
             if momento > 0 { if mIni == 0 { mIni = momento }; mFim = momento }
@@ -419,8 +571,20 @@ final class BeeMeterBLE: NSObject, CBCentralManagerDelegate, CBPeripheralDelegat
         ]
         let json = (try? JSONSerialization.data(withJSONObject: res)).flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
         let chave = s.chave
-        encerrar(nil)
-        saida("window.bleConcluido && bleConcluido(\(q(chave)),\(json))")
+        anexarHistorico(hist)
+        if s.aoVivo {
+            saida("window.bleConcluido && bleConcluido(\(q(chave)),\(json))")
+            guard var atualizada = sessao else { return }
+            atualizada.etapa = 20
+            atualizada.inicioVivo = Date()
+            sessao = atualizada
+            vivo()
+            if let a = s.agora as? [String: Any] { registrarVivo(a) }
+            agendarVivo()
+        } else {
+            encerrar(nil)
+            saida("window.bleConcluido && bleConcluido(\(q(chave)),\(json))")
+        }
     }
 
     // MARK: lotes guardados

@@ -36,7 +36,7 @@ import java.io.OutputStream;
 import java.util.UUID;
 
 public class MainActivity extends Activity {
-    private static final int REQ_CAMERA = 1, REQ_GALERIA = 2, PERM_AUDIO = 10, PERM_ARMAZ = 11, PERM_BLE = 12;
+    private static final int REQ_CSV = 3, REQ_CAMERA = 1, REQ_GALERIA = 2, PERM_AUDIO = 10, PERM_ARMAZ = 11, PERM_BLE = 12;
     private BeeMeter beemeter;
     private Runnable acaoBle;
     private String chaveBle;
@@ -128,6 +128,20 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int req, int res, Intent data) {
         super.onActivityResult(req, res, data);
+        if (req == REQ_CSV) {
+            if (res == RESULT_OK && data != null && data.getData() != null) {
+                final Uri destino = data.getData();
+                new Thread(new Runnable() { public void run() {
+                    try {
+                        OutputStream out = getContentResolver().openOutputStream(destino);
+                        beemeter.exportarCsv(out);
+                        out.close();
+                        js("window.toast && toast('Planilha salva')");
+                    } catch (Exception e) { js("window.toast && toast('Não foi possível salvar a planilha')"); }
+                }}).start();
+            }
+            return;
+        }
         if (req != REQ_CAMERA && req != REQ_GALERIA) return;
         Uri origem = null;
         if (req == REQ_CAMERA) {
@@ -365,7 +379,7 @@ public class MainActivity extends Activity {
         }
 
         @JavascriptInterface
-        public String versao() { return "3.1"; }
+        public String versao() { return "3.2"; }
 
         @JavascriptInterface
         public void bleBuscar(final String chave, final int segundos) {
@@ -388,6 +402,36 @@ public class MainActivity extends Activity {
         public void bleIdentificar(final String chave, final String id) {
             runOnUiThread(new Runnable() { public void run() {
                 comBluetooth(chave, new Runnable() { public void run() { beemeter.identificar(chave, id); } });
+            }});
+        }
+
+        @JavascriptInterface
+        public void bleAoVivo(final String chave, final String id, final String desde, final int colonia, final String visita) {
+            runOnUiThread(new Runnable() { public void run() {
+                comBluetooth(chave, new Runnable() { public void run() {
+                    long d = 0; try { d = Long.parseLong(desde); } catch (Exception e) { }
+                    beemeter.aoVivo(chave, id, d, colonia, visita);
+                } });
+            }});
+        }
+
+        @JavascriptInterface
+        public void bleParar() { runOnUiThread(new Runnable() { public void run() { beemeter.parar(); } }); }
+
+        @JavascriptInterface
+        public String historico(int colonia, String desde) {
+            long d = 0; try { d = Long.parseLong(desde); } catch (Exception e) { }
+            return beemeter.historico(colonia, d);
+        }
+
+        @JavascriptInterface
+        public void exportarHistorico() {
+            runOnUiThread(new Runnable() { public void run() {
+                Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                i.addCategory(Intent.CATEGORY_OPENABLE);
+                i.setType("text/csv");
+                i.putExtra(Intent.EXTRA_TITLE, "medicoes_meliponas_" + new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(new java.util.Date()) + ".csv");
+                try { startActivityForResult(i, REQ_CSV); } catch (Exception e) { js("window.toast && toast('Este celular não permite salvar arquivos')"); }
             }});
         }
 

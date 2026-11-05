@@ -42,6 +42,10 @@ final class Ponte {
         case "bleBuscar": bee.buscar(chave: s(0), segundos: max(3, n(1)))
         case "bleBaixar": bee.baixar(chave: s(0), id: s(1), desde: Int64(s(2)) ?? 0, colonia: n(3))
         case "bleIdentificar": bee.identificar(chave: s(0), id: s(1))
+        case "bleAoVivo": bee.aoVivo(chave: s(0), id: s(1), desde: Int64(s(2)) ?? 0, colonia: n(3), visita: s(4))
+        case "bleParar": bee.parar()
+        case "historico": return bee.historico(colonia: n(0), desde: Int64(s(1)) ?? 0)
+        case "exportarHistorico": exportar()
         case "bleCancelar": bee.cancelar()
         case "lotesPendentes": return bee.lotesPendentes()
         case "lerLote": return bee.lerLote(nome: s(0))
@@ -49,6 +53,21 @@ final class Ponte {
         default: break
         }
         return ""
+    }
+
+    private func exportar() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self, let url = self.bee.arquivoCsv() else { return }
+            DispatchQueue.main.async {
+                guard let tela = self.tela else { return }
+                let vc = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+                if let pop = vc.popoverPresentationController {
+                    pop.sourceView = tela.view
+                    pop.sourceRect = CGRect(x: tela.view.bounds.midX, y: tela.view.bounds.maxY - 80, width: 1, height: 1)
+                }
+                tela.present(vc, animated: true)
+            }
+        }
     }
 
     private func compartilhar(texto: String, titulo: String) {
